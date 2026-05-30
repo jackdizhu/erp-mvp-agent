@@ -155,6 +155,36 @@ def data_invalid_supplier(supplier_id: str) -> AgentError:
     )
 
 
+def approval_failed(tool_name: str) -> AgentError:
+    return AgentError(
+        code="APPROVAL_FAILED",
+        message="高风险操作审批创建失败，请联系管理员",
+        detail=f"Failed to create pending action for {tool_name}",
+        source="approval",
+        recoverable=False
+    )
+
+
+def approval_required() -> AgentError:
+    return AgentError(
+        code="APPROVAL_REQUIRED",
+        message="此操作需要审批确认，但审批创建失败",
+        detail="DANGER tool executed without pending action",
+        source="approval",
+        recoverable=False
+    )
+
+
+def llm_retry_exhausted(expected_tool: str) -> AgentError:
+    return AgentError(
+        code="LLM_RETRY_EXHAUSTED",
+        message="AI无法正确使用工具，请换种方式描述",
+        detail=f"LLM still failed to call {expected_tool} after retry",
+        source="llm",
+        recoverable=True
+    )
+
+
 def sys_timeout(detail: str = "") -> AgentError:
     return AgentError(
         code="SYS_TIMEOUT",

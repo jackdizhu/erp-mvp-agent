@@ -159,6 +159,7 @@ npm run dev
   approval.py    # 审批流程管理器
   config.py      # 风险级别、限额配置
   errors.py      # 统一错误模型
+  intent_detector.py # 意图检测引擎
 
 /frontend/src
   App.jsx        # 根组件
@@ -194,6 +195,24 @@ npm run dev
 | TOOL_LIMIT_CREATE | 5 | 创建订单最大数量 |
 | TOOL_LIMIT_UPDATE | 5 | 修改订单最大数量 |
 | TOOL_LIMIT_BATCH | 10 | 批量查询最大数量 |
+| INTENT_RULES_PATH | app/config/intent_rules.json | 意图规则文件路径 |
+
+## 安全校验
+
+### 双层验证架构
+
+防止LLM幻觉导致高风险操作绕过审批：
+
+| 节点 | 验证内容 | 处理方式 |
+|------|---------|---------|
+| 节点1 | 工具调用验证 | 检测缺失tool_calls → 意图检测 → 强制二次调用 |
+| 节点2 | 审批流程验证 | 确保DANGER工具创建pending_action |
+
+### 意图检测引擎
+
+- **可配置**：JSON文件包含中英文正则模式
+- **运行时重载**：调用 `reload_intent_rules()` 应用新规则
+- **自定义路径**：设置 `INTENT_RULES_PATH` 环境变量
 
 ## 扩展路线
 

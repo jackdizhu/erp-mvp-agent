@@ -1,0 +1,76 @@
+{
+  "update_order": {
+    "zh": [
+      "修改.*订单",
+      "改.*地址",
+      "改.*电话",
+      "更新.*订单",
+      "变更.*订单",
+      "订单.*改为",
+      "地址.*改成",
+      "电话.*改成"
+    ],
+    "en": [
+      "update.*order",
+      "change.*address",
+      "modify.*order",
+      "edit.*order",
+      "order.*to",
+      "address.*to",
+      "phone.*to"
+    ]
+  },
+  "cancel_order": {
+    "zh": [
+      "取消.*订单",
+      "不要.*订单",
+      "退掉.*订单",
+      "订单.*取消",
+      "撤销.*订单",
+      "作废.*订单"
+    ],
+    "en": [
+      "cancel.*order",
+      "delete.*order",
+      "remove.*order",
+      "void.*order",
+      "revoke.*order"
+    ]
+  },
+  "delete_order": {
+    "zh": [
+      "删除.*订单",
+      "删掉.*订单",
+      "移除.*订单",
+      "彻底.*删除"
+    ],
+    "en": [
+      "delete.*order",
+      "remove.*order.*permanently",
+      "purge.*order"
+    ]
+  },
+  "adjust_inventory": {
+    "zh": [
+      "调整.*库存",
+      "修改.*库存",
+      "增加.*库存",
+      "减少.*库存",
+      "库存.*加",
+      "库存.*减",
+      "补货",
+      "入库",
+      "出库"
+    ],
+    "en": [
+      "adjust.*inventory",
+      "update.*stock",
+      "add.*stock",
+      "increase.*inventory",
+      "decrease.*inventory",
+      "restock",
+      "stock.*in",
+      "stock.*out"
+    ]
+  }
+}

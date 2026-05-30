@@ -5,9 +5,11 @@ from app.llm import call_llm, SYSTEM_PROMPT
 from app.tools import TOOL_SCHEMAS, execute_tool
 from app.config import TOOL_RISK_LEVELS, TOOL_LIMITS, HISTORY_WINDOW
 from app.approval import approval_manager
+from app.intent_detector import detect_tool_intent
 from app.errors import (
     tool_limit, tool_expired, build_error_response,
-    AgentError, llm_invalid_response
+    AgentError, llm_invalid_response, approval_failed,
+    approval_required, llm_retry_exhausted
 )
 
 
@@ -36,8 +38,16 @@ def chat(message: str, history: list) -> dict:
         response = call_llm(messages, TOOL_SCHEMAS)
 
         if response["finish_reason"] == "stop" or not response["tool_calls"]:
+            reply = _strip_think_tags(response["content"]) or ""
+            expected_tool = detect_tool_intent(message)
+
+            if expected_tool:
+                return _force_tool_retry(
+                    messages, message, expected_tool, reply
+                )
+
             return {
-                "reply": _strip_think_tags(response["content"]) or "",
+                "reply": reply,
                 "tool_calls": [],
                 "pending_action": None,
                 "error": None
@@ -52,9 +62,27 @@ def chat(message: str, history: list) -> dict:
         return build_error_response(llm_invalid_response(str(e)))
 
 
+def _force_tool_retry(messages: list, user_message: str, expected_tool: str, previous_reply: str) -> dict:
+    retry_messages = messages + [
+        {"role": "assistant", "content": previous_reply},
+        {
+            "role": "system",
+            "content": f"请使用 {expected_tool} 工具重新处理此请求。此操作需要调用工具而非直接回答。"
+        }
+    ]
+
+    retry_response = call_llm(retry_messages, TOOL_SCHEMAS)
+
+    if retry_response["finish_reason"] == "tool_calls" and retry_response["tool_calls"]:
+        return _handle_tool_calls(retry_response["tool_calls"], retry_messages)
+
+    return build_error_response(llm_retry_exhausted(expected_tool))
+
+
 def _handle_tool_calls(tool_calls, messages: list) -> dict:
     results = []
     pending = None
+    has_danger = False
 
     for tc in tool_calls:
         tool_name = tc.function.name
@@ -73,17 +101,22 @@ def _handle_tool_calls(tool_calls, messages: list) -> dict:
             results.append(result)
 
         elif risk == "DANGER":
+            has_danger = True
             action = approval_manager.create_pending(
                 tool_name, tool_args, messages
             )
-            if action:
-                pending = action
-                results.append({
-                    "tool": tool_name,
-                    "args": tool_args,
-                    "status": "pending_approval",
-                    "action_id": action["id"]
-                })
+            if not action:
+                return build_error_response(approval_failed(tool_name))
+            pending = action
+            results.append({
+                "tool": tool_name,
+                "args": tool_args,
+                "status": "pending_approval",
+                "action_id": action["id"]
+            })
+
+    if has_danger and not pending:
+        return build_error_response(approval_required())
 
     if pending:
         return {

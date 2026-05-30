@@ -356,6 +356,7 @@ LLM层:
   LLM_OVERLOAD       - AI服务繁忙
   LLM_TOKEN_LIMIT    - 请求内容过长
   LLM_INVALID_RESPONSE - AI返回异常
+  LLM_RETRY_EXHAUSTED - LLM二次调用仍无工具
 
 TOOL层:
   TOOL_NOT_FOUND     - 不支持的操作
@@ -363,6 +364,10 @@ TOOL层:
   TOOL_INVALID_PARAM - 参数格式错误
   TOOL_LIMIT         - 超出限额
   TOOL_EXPIRED       - 审批过期
+
+APPROVAL层:
+  APPROVAL_FAILED    - 审批创建失败
+  APPROVAL_REQUIRED  - 高风险操作未进入审批
 
 DATA层:
   DATA_NOT_FOUND     - 未找到记录
@@ -394,9 +399,87 @@ SYSTEM层:
 
 ---
 
-# 八、会话管理
+# 八、安全校验机制
 
-## 8.1 前端持久化
+## 8.1 双层验证架构
+
+为防止 LLM 幻觉导致高风险操作绕过审批流程，系统实现了双层验证机制：
+
+```
+节点1: 工具调用验证 → 检测LLM是否调用了应有的Tool
+节点2: 审批流程验证 → 确保DANGER工具进入审批
+```
+
+### 节点1：工具调用验证
+
+```
+LLM返回无tool_calls
+   ↓
+detect_tool_intent() 检测用户消息意图
+   ↓
+检测到操作意图? → 否 → 普通问答放行
+   ↓ 是
+_force_tool_retry() 二次LLM调用
+   ↓
+二次调用成功有tool_calls? → 是 → 正常执行
+   ↓ 否
+返回 LLM_RETRY_EXHAUSTED 错误
+```
+
+### 节点2：审批流程验证
+
+```
+_handle_tool_calls() 处理工具调用
+   ↓
+DANGER工具执行时跟踪 has_danger 标记
+   ↓
+create_pending() 返回 None? → 是 → 返回 APPROVAL_FAILED
+   ↓
+函数末尾验证: has_danger 且无 pending_action? → 是 → 返回 APPROVAL_REQUIRED
+```
+
+## 8.2 意图检测引擎
+
+### 配置方式
+
+默认从 `app/config/intent_rules.json` 加载，支持环境变量覆盖：
+
+```bash
+export INTENT_RULES_PATH=/custom/path/rules.json
+```
+
+### 规则格式
+
+```json
+{
+  "update_order": {
+    "zh": ["修改.*订单", "改.*地址", "更新.*订单"],
+    "en": ["update.*order", "change.*address"]
+  }
+}
+```
+
+### 运行时重载
+
+```python
+from app.intent_detector import reload_intent_rules
+reload_intent_rules()
+```
+
+## 8.3 中英文关键词覆盖
+
+| 工具 | 中文关键词 | 英文关键词 |
+|------|-----------|-----------|
+| update_order | 8条 | 7条 |
+| cancel_order | 6条 | 5条 |
+| delete_order | 4条 | 3条 |
+| adjust_inventory | 9条 | 7条 |
+
+---
+
+# 九、会话管理
+
+## 9.1 前端持久化
 
 ```javascript
 // localStorage存储
@@ -413,7 +496,7 @@ localStorage.setItem("erp_agent_sessions", JSON.stringify(sessions))
 }
 ```
 
-## 8.2 历史窗口
+## 9.2 历史窗口
 
 ```python
 # 默认截取最近6轮
@@ -425,7 +508,7 @@ def truncate_history(messages, n=6):
   return messages[-n:]
 ```
 
-## 8.3 深层拷贝机制
+## 9.3 深层拷贝机制
 
 ```javascript
 // 确保React状态不可变更新
@@ -439,7 +522,7 @@ setSessions(prev => {
 
 ---
 
-# 九、MVP验证场景
+# 十、MVP验证场景
 
 ## 场景1：订单查询
 
@@ -499,9 +582,19 @@ setSessions(prev => {
 用户确认: → cancel_order() → release_inventory() → "订单已取消,库存已释放"
 ```
 
+## 场景8：LLM幻觉拦截验证
+
+```
+输入: "把订单123的地址改成北京"
+LLM返回: "地址已修改" (无tool_calls)
+节点1验证: detect_tool_intent() → "update_order"
+强制二次调用: LLM返回 tool_calls[update_order]
+节点2验证: DANGER工具 → 创建审批 → 返回审批卡片
+```
+
 ---
 
-# 十、部署方式
+# 十一、部署方式
 
 ```bash
 # 后端
@@ -522,7 +615,7 @@ npm run dev                 # Vite dev server
 
 ---
 
-# 十一、配置清单
+# 十二、配置清单
 
 ## 环境变量
 
@@ -537,10 +630,11 @@ npm run dev                 # Vite dev server
 | TOOL_LIMIT_CREATE | 5 | 创建订单最大数量 |
 | TOOL_LIMIT_UPDATE | 5 | 修改订单最大数量 |
 | TOOL_LIMIT_BATCH | 10 | 批量查询最大数量 |
+| INTENT_RULES_PATH | app/config/intent_rules.json | 意图规则文件路径 |
 
 ---
 
-# 十二、扩展路线
+# 十三、扩展路线
 
 | 阶段 | 内容 |
 |------|------|

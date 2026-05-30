@@ -194,6 +194,24 @@ Confirm or reject a pending action.
 | TOOL_LIMIT_CREATE | 5 | Max items per create |
 | TOOL_LIMIT_UPDATE | 5 | Max items per update |
 | TOOL_LIMIT_BATCH | 10 | Max batch query size |
+| INTENT_RULES_PATH | app/config/intent_rules.json | Intent rules file path |
+
+## Security Validation
+
+### Dual-Layer Verification
+
+To prevent LLM hallucination from bypassing DANGER-level approval:
+
+| Node | Validation | Action |
+|------|-----------|--------|
+| Node 1 | Tool call verification | Detects missing tool_calls → Intent detection → Force retry |
+| Node 2 | Approval flow verification | Ensures DANGER tools create pending_action |
+
+### Intent Detection Engine
+
+- **Configurable**: JSON file with regex patterns (Chinese + English)
+- **Runtime reload**: Call `reload_intent_rules()` to apply new rules
+- **Custom path**: Set `INTENT_RULES_PATH` environment variable
 
 ## Roadmap
 
