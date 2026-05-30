@@ -5,7 +5,7 @@ const API_BASE = "http://localhost:8000";
 export function useStreamingChat() {
   const abortRef = useRef(null);
 
-  const startStream = useCallback(async (message, history, callbacks) => {
+  const startStream = useCallback(async (message, history, session_id, callbacks) => {
     if (abortRef.current) {
       abortRef.current.abort();
     }
@@ -19,7 +19,7 @@ export function useStreamingChat() {
       const res = await fetch(`${API_BASE}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history }),
+        body: JSON.stringify({ message, history, session_id }),
         signal: controller.signal,
       });
 

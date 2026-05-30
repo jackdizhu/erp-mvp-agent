@@ -5,8 +5,10 @@ from pydantic import BaseModel
 from typing import Optional
 import queue
 import threading
+import uuid
 
 from app.agent import chat, confirm_action, stream_chat, format_sse_event
+from app.agent_logger import SessionLogger
 from erp_app.main import router as erp_router
 from erp_app.db import init_db as init_erp_db
 from erp_app.seed import seed_data
@@ -38,12 +40,14 @@ class HistoryMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[HistoryMessage] = []
+    session_id: Optional[str] = None
 
 
 class ConfirmRequest(BaseModel):
     action_id: str
     approved: bool
     history: list[HistoryMessage] = []
+    session_id: Optional[str] = None
 
 
 class ToolCallResult(BaseModel):
@@ -79,20 +83,31 @@ class ChatResponse(BaseModel):
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
     history = [h.model_dump() for h in req.history]
-    result = chat(req.message, history)
+    session_id = req.session_id if req.session_id else f"none_{uuid.uuid4().hex[:8]}"
+
+    logger = SessionLogger(session_id)
+
+    result = chat(req.message, history, logger)
     return ChatResponse(**result)
 
 
 @app.post("/chat/confirm", response_model=ChatResponse)
 async def confirm_endpoint(req: ConfirmRequest):
     history = [h.model_dump() for h in req.history]
-    result = confirm_action(req.action_id, req.approved, history)
+    session_id = req.session_id if req.session_id else f"none_{uuid.uuid4().hex[:8]}"
+
+    logger = SessionLogger(session_id)
+
+    result = confirm_action(req.action_id, req.approved, history, logger)
     return ChatResponse(**result)
 
 
 @app.post("/chat/stream")
 async def stream_endpoint(req: ChatRequest):
     history = [h.model_dump() for h in req.history]
+    session_id = req.session_id if req.session_id else f"none_{uuid.uuid4().hex[:8]}"
+
+    logger = SessionLogger(session_id)
 
     q = queue.Queue()
 
@@ -102,7 +117,7 @@ async def stream_endpoint(req: ChatRequest):
 
     def run_sync():
         try:
-            stream_chat(req.message, history, on_event)
+            stream_chat(req.message, history, on_event, logger)
         except Exception as e:
             error_data = {"message": str(e), "code": "stream_error"}
             q.put(format_sse_event("done", {

@@ -186,7 +186,7 @@ export default function ChatPage() {
       return result;
     };
 
-    await startStream(userMsg, truncateHistory(activeSession.messages), {
+    await startStream(userMsg, truncateHistory(activeSession.messages), activeId, {
       onThinking: () => {},
       onToolCall: (data) => {
         if (!toolCallOrder.includes(data.tool)) {
@@ -283,7 +283,7 @@ export default function ChatPage() {
       const res = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg, history })
+        body: JSON.stringify({ message: userMsg, history, session_id: activeId })
       });
       const data = await res.json();
 
@@ -365,7 +365,7 @@ export default function ChatPage() {
                   const res = await fetch(`${API_BASE}/chat/confirm`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action_id: actionId, approved, history })
+                    body: JSON.stringify({ action_id: actionId, approved, history, session_id: activeSession.id })
                   });
                   const data = await res.json();
 
