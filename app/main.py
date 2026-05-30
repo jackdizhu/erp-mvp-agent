@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from app.agent import chat, confirm_action
+from app.agent import chat, confirm_action, stream_chat, format_sse_event
 
 app = FastAPI(title="ERP Agent MVP")
 
@@ -74,6 +75,58 @@ async def confirm_endpoint(req: ConfirmRequest):
     history = [h.model_dump() for h in req.history]
     result = confirm_action(req.action_id, req.approved, history)
     return ChatResponse(**result)
+
+
+@app.post("/chat/stream")
+async def stream_endpoint(req: ChatRequest):
+    history = [h.model_dump() for h in req.history]
+    import queue
+    import threading
+
+    q = queue.Queue()
+
+    def on_event(event_type: str, data: dict):
+        formatted = format_sse_event(event_type, data)
+        q.put(formatted)
+
+    def run_sync():
+        try:
+            stream_chat(req.message, history, on_event)
+        except Exception as e:
+            error_data = {"message": str(e), "code": "stream_error"}
+            q.put(format_sse_event("done", {
+                "complete": False,
+                "tool_calls": [],
+                "pending_action": None,
+                "error": error_data
+            }))
+        finally:
+            q.put(None)
+
+    thread = threading.Thread(target=run_sync, daemon=True)
+    thread.start()
+
+    async def event_generator():
+        while True:
+            try:
+                item = q.get(timeout=1)
+                if item is None:
+                    break
+                yield item
+            except queue.Empty:
+                if not thread.is_alive():
+                    break
+                yield ":\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 if __name__ == "__main__":

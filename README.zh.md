@@ -26,6 +26,7 @@
 | **工具调用** | LLM驱动的路由系统，内置8个工具 |
 | **风险分级审批** | SAFE/CAUTION/DANGER三级，支持确认流程 |
 | **会话管理** | 多会话支持，localStorage持久化 |
+| **流式响应** | SSE实时推送，打字机效果，工具状态可视化 |
 | **错误处理** | 四层错误模型（LLM/TOOL/DATA/SYS） |
 
 ## 技术栈
@@ -147,23 +148,46 @@ npm run dev
 }
 ```
 
+### POST /chat/stream
+
+SSE流式响应，实时推送Agent执行状态。
+
+**请求:** 与 `/chat` 相同格式。
+
+**响应:** `text/event-stream` 格式，包含以下事件类型：
+
+| 事件 | 说明 | 数据格式 |
+|------|------|---------|
+| `thinking` | Agent思考阶段 | `{"stage": "analyzing_intent", "message": "正在理解您的意图..."}` |
+| `tool_call` | 工具调用开始 | `{"tool": "query_order", "args": {...}, "status": "executing"}` |
+| `tool_result` | 工具执行结果 | `{"tool": "query_order", "result": {...}, "status": "completed"}` |
+| `reply_chunk` | LLM回复片段 | `{"content": "订"}` |
+| `done` | 完成标记 | `{"complete": true, "tool_calls": [...], "pending_action": null}` |
+
+**前端使用:** 在聊天界面勾选"流式模式"即可启用，SSE失败时自动降级到 `/chat` 端点。
+
 ## 架构设计
 
 ```
 /app
   main.py        # API入口
-  agent.py       # 智能体核心循环
+  agent.py       # 智能体核心循环（含stream_chat流式函数）
   tools.py       # 工具注册与执行
-  llm.py         # LLM调用封装
+  llm.py         # LLM调用封装（含call_llm_stream流式函数）
   mock_erp.py    # 模拟ERP数据
   approval.py    # 审批流程管理器
-  config.py      # 风险级别、限额配置
+  config.py      # 风险级别、限额配置、SSE配置
   errors.py      # 统一错误模型
   intent_detector.py # 意图检测引擎
 
 /frontend/src
   App.jsx        # 根组件
-  ChatPage.jsx   # 聊天界面与消息渲染
+  ChatPage.jsx   # 聊天界面与消息渲染（支持同步/流式切换）
+  StreamingMessage.jsx # 流式消息渲染组件
+  ThinkingIndicator.jsx # 思考状态指示器
+  ToolStatusCard.jsx # 工具状态卡片
+  DataVizCard.jsx # 数据可视化卡片
+  useStreamingChat.js # SSE流式连接管理器
   ApprovalCard.jsx # 风险审批卡片
   SessionManager.js # 会话状态管理
 ```
@@ -195,6 +219,9 @@ npm run dev
 | TOOL_LIMIT_CREATE | 5 | 创建订单最大数量 |
 | TOOL_LIMIT_UPDATE | 5 | 修改订单最大数量 |
 | TOOL_LIMIT_BATCH | 10 | 批量查询最大数量 |
+| SSE_PING_INTERVAL | 15 | SSE心跳间隔（秒） |
+| SSE_TIMEOUT | 60 | SSE连接超时（秒） |
+| SSE_MAX_CHUNK | 500 | SSE最大分片大小 |
 | INTENT_RULES_PATH | app/config/intent_rules.json | 意图规则文件路径 |
 
 ## 安全校验

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 const STATUS_STYLES = {
   pending:   { border: "2px solid #e74c3c", bg: "#fff5f5" },
   executing: { border: "2px solid #f39c12", bg: "#fffaf0" },
@@ -17,11 +19,24 @@ const STATUS_LABELS = {
 };
 
 function ApprovalCard({ pendingAction, approvalState, onConfirm, onReject }) {
+  const [actionLoading, setActionLoading] = useState(null);
   const status = approvalState?.status || "pending";
   const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
   const detail = pendingAction.detail || {};
   const fields = detail.fields || [];
   const isPending = status === "pending";
+
+  const handleConfirm = () => {
+    if (actionLoading) return;
+    setActionLoading("confirm");
+    onConfirm();
+  };
+
+  const handleReject = () => {
+    if (actionLoading) return;
+    setActionLoading("reject");
+    onReject();
+  };
 
   return (
     <div className="approval-card" style={{ border: style.border, background: style.bg }}>
@@ -57,8 +72,20 @@ function ApprovalCard({ pendingAction, approvalState, onConfirm, onReject }) {
 
       {isPending && (
         <div className="approval-actions">
-          <button className="confirm-btn" onClick={onConfirm}>✅ 确认执行</button>
-          <button className="cancel-btn" onClick={onReject}>❌ 取消操作</button>
+          <button
+            className="confirm-btn"
+            onClick={handleConfirm}
+            disabled={!!actionLoading}
+          >
+            {actionLoading === "confirm" ? "⏳ 执行中..." : "✅ 确认执行"}
+          </button>
+          <button
+            className="cancel-btn"
+            onClick={handleReject}
+            disabled={!!actionLoading}
+          >
+            {actionLoading === "reject" ? "⏳ 处理中..." : "❌ 取消操作"}
+          </button>
         </div>
       )}
     </div>

@@ -131,31 +131,7 @@
 .tool-calls {
   margin-top: 8px;
   max-width: 70%;
-}
-
-.tool-call-item {
-  font-size: 12px;
-  color: #666;
-  padding: 4px 8px;
-  background: #f8f9fa;
-  border-radius: 4px;
-  margin-bottom: 4px;
-}
-
-.tool-name {
-  font-weight: 600;
-  color: #333;
-  margin-right: 6px;
-}
-
-.tool-args {
-  font-family: monospace;
-  font-size: 11px;
-}
-
-.tool-result {
-  color: #27ae60;
-  margin-left: 6px;
+  display: none;
 }
 
 .approval-card {
@@ -294,3 +270,154 @@
 }
 .input-area button:hover { background: #0056b3; }
 .input-area button:disabled { background: #ccc; cursor: not-allowed; }
+
+.streaming-content {
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #666;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.thinking-dots .dot {
+  width: 8px;
+  height: 8px;
+  background: #007bff;
+  border-radius: 50%;
+  animation: thinking-bounce 1.4s infinite ease-in-out;
+}
+
+.thinking-dots .dot:nth-child(1) { animation-delay: -0.32s; }
+.thinking-dots .dot:nth-child(2) { animation-delay: -0.16s; }
+.thinking-dots .dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes thinking-bounce {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.thinking-text {
+  font-style: italic;
+}
+
+.reply-text {
+  background: #f1f3f5;
+  border-radius: 16px 16px 16px 4px;
+  padding: 10px 16px;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.tool-call-sequence {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+}
+
+.tool-sequence-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: #f3f4f6;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.tool-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: #d1d5db;
+  color: #374151;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tool-step-name {
+  font-family: monospace;
+  color: #6b7280;
+}
+
+.quick-commands {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px 0;
+  flex-wrap: wrap;
+}
+
+.quick-cmd-btn {
+  padding: 4px 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  transition: all 0.15s;
+}
+
+.quick-cmd-btn:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.mode-toggle {
+  margin-left: auto;
+  font-size: 13px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mode-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.mode-toggle input[type="checkbox"] {
+  margin: 0;
+}
+
+.error-message-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #c53030;
+  max-width: 70%;
+}
+
+.error-icon {
+  font-size: 16px;
+}
+
+.error-text {
+  font-weight: 500;
+}

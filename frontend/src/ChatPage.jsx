@@ -1,10 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSessionManager, createMessage, addAssistantMessage, updateApprovalState, autoTitle, truncateHistory } from './SessionManager';
 import ApprovalCard from './ApprovalCard';
+import StreamingMessage from './StreamingMessage';
+import { useStreamingChat } from './useStreamingChat';
 
 const API_BASE = "http://localhost:8000";
 
-function MessageBubble({ message, messageIndex, activeSession, updateSessions, setLoading }) {
+const QUICK_COMMANDS = [
+  { label: "查询订单", template: "查询订单123" },
+  { label: "查询库存", template: "查询iPhone-15库存" },
+  { label: "批量查询", template: "查询所有订单" },
+  { label: "查询供应商", template: "查询供应商SUP-A" },
+];
+
+function MessageBubble({ message, messageIndex, activeSession, updateSessions, setLoading, useStream, onConfirm }) {
   const isUser = message.role === "user";
 
   const handleConfirm = async (actionId, approved) => {
@@ -43,6 +52,19 @@ function MessageBubble({ message, messageIndex, activeSession, updateSessions, s
       setLoading(false);
     }
   };
+
+  if (useStream && message.isStreaming !== undefined) {
+    return (
+      <StreamingMessage
+        message={message}
+        messageIndex={messageIndex}
+        activeSession={activeSession}
+        updateSessions={updateSessions}
+        setLoading={setLoading}
+        onConfirm={handleConfirm}
+      />
+    );
+  }
 
   return (
     <div className={`message ${isUser ? "user" : "assistant"}`}>
@@ -88,6 +110,8 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [useStream, setUseStream] = useState(true);
+  const { startStream, stopStream } = useStreamingChat();
 
   const hasPendingApproval = activeSession?.messages?.some(m =>
     m.approvalStates?.some(s => s.status === "pending")
@@ -108,6 +132,152 @@ export default function ChatPage() {
       return [...prev];
     });
 
+    if (useStream) {
+      await handleStreamSend(userMsg);
+    } else {
+      await handleSyncSend(userMsg);
+    }
+  };
+
+  const handleStreamSend = async (userMsg) => {
+    const streamingMsg = {
+      role: "assistant",
+      content: "",
+      isStreaming: true,
+      isDone: false,
+      replyContent: "",
+      toolEvents: [],
+      thinkingState: null,
+      pendingActions: [],
+      approvalStates: [],
+      completedTools: [],
+      timestamp: new Date().toISOString(),
+    };
+
+    updateSessions(prev => {
+      const session = prev.find(s => s.id === activeId);
+      if (session) {
+        session.messages.push(streamingMsg);
+      }
+      return [...prev];
+    });
+
+    let accumulatedReply = "";
+    let toolCallOrder = [];
+    let thinkDepth = 0;
+
+    const stripThinkContent = (chunk) => {
+      let result = "";
+      let i = 0;
+      while (i < chunk.length) {
+        if (chunk.substring(i, i + 7) === "<think>") {
+          thinkDepth++;
+          i += 7;
+        } else if (chunk.substring(i, i + 8) === "</think>") {
+          thinkDepth--;
+          i += 8;
+        } else {
+          if (thinkDepth === 0) {
+            result += chunk[i];
+          }
+          i++;
+        }
+      }
+      return result;
+    };
+
+    await startStream(userMsg, truncateHistory(activeSession.messages), {
+      onThinking: () => {},
+      onToolCall: (data) => {
+        if (!toolCallOrder.includes(data.tool)) {
+          toolCallOrder.push(data.tool);
+        }
+        updateSessions(prev => {
+          const idx = prev.findIndex(s => s.id === activeId);
+          if (idx === -1) return prev;
+          const session = { ...prev[idx] };
+          const msgs = [...session.messages];
+          const msg = { ...msgs[msgs.length - 1] };
+          msg.toolEvents = [...msg.toolEvents, { tool: data.tool }];
+          msgs[msgs.length - 1] = msg;
+          session.messages = msgs;
+          prev[idx] = session;
+          return [...prev];
+        });
+      },
+      onToolResult: () => {},
+      onReplyChunk: (data) => {
+        const cleaned = stripThinkContent(data.content);
+        accumulatedReply += cleaned;
+        updateSessions(prev => {
+          const idx = prev.findIndex(s => s.id === activeId);
+          if (idx === -1) return prev;
+          const session = { ...prev[idx] };
+          const msgs = [...session.messages];
+          const msg = { ...msgs[msgs.length - 1] };
+          msg.replyContent = accumulatedReply;
+          msgs[msgs.length - 1] = msg;
+          session.messages = msgs;
+          prev[idx] = session;
+          return [...prev];
+        });
+      },
+      onDone: (data) => {
+        const finalContent = accumulatedReply
+          .replace(/<think>[\s\S]*?<think>/g, "")
+          .trim();
+        updateSessions(prev => {
+          const idx = prev.findIndex(s => s.id === activeId);
+          if (idx === -1) return prev;
+          const session = { ...prev[idx] };
+          const msgs = [...session.messages];
+          const msg = { ...msgs[msgs.length - 1] };
+          msg.isStreaming = false;
+          msg.isDone = true;
+          msg.thinkingState = null;
+          msg.completedTools = toolCallOrder;
+          msg.toolEvents = toolCallOrder.map(t => ({ tool: t }));
+          if (data.error) {
+            msg.content = data.error.message || "处理失败，请重试";
+            msg.errorMessage = data.error.message || "处理失败，请重试";
+            msg.errorRecoverable = data.error.recoverable !== false;
+          } else {
+            msg.content = finalContent;
+            msg.replyContent = "";
+          }
+          if (data.pending_action) {
+            msg.pendingActions = [data.pending_action];
+            msg.approvalStates = [{ actionId: data.pending_action.id, status: "pending" }];
+          }
+          msgs[msgs.length - 1] = msg;
+          session.messages = msgs;
+          prev[idx] = session;
+          return [...prev];
+        });
+        setLoading(false);
+      },
+      onError: (err) => {
+        updateSessions(prev => {
+          const idx = prev.findIndex(s => s.id === activeId);
+          if (idx === -1) return prev;
+          const session = { ...prev[idx] };
+          const msgs = [...session.messages];
+          const msg = { ...msgs[msgs.length - 1] };
+          msg.isStreaming = false;
+          msg.isDone = true;
+          msg.content = "流式连接失败，请重试";
+          msg.thinkingState = null;
+          msgs[msgs.length - 1] = msg;
+          session.messages = msgs;
+          prev[idx] = session;
+          return [...prev];
+        });
+        setLoading(false);
+      }
+    });
+  };
+
+  const handleSyncSend = async (userMsg) => {
     try {
       const history = truncateHistory(activeSession.messages);
       const res = await fetch(`${API_BASE}/chat`, {
@@ -137,6 +307,10 @@ export default function ChatPage() {
     }
   };
 
+  const handleQuickCommand = (template) => {
+    setInput(template);
+  };
+
   return (
     <div className="chat-page">
       {sidebarOpen && (
@@ -163,6 +337,16 @@ export default function ChatPage() {
         <div className="chat-header">
           <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
           <span>ERP Agent Chat</span>
+          <div className="mode-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={useStream}
+                onChange={(e) => setUseStream(e.target.checked)}
+              />
+              流式模式
+            </label>
+          </div>
         </div>
         <div className="message-list">
           {activeSession?.messages?.map((msg, idx) => (
@@ -173,7 +357,55 @@ export default function ChatPage() {
               activeSession={activeSession}
               updateSessions={updateSessions}
               setLoading={setLoading}
+              useStream={useStream}
+              onConfirm={async (actionId, approved) => {
+                setLoading(true);
+                try {
+                  const history = truncateHistory(activeSession.messages);
+                  const res = await fetch(`${API_BASE}/chat/confirm`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action_id: actionId, approved, history })
+                  });
+                  const data = await res.json();
+
+                  updateSessions(prev => {
+                    const session = prev.find(s => s.id === activeSession.id);
+                    if (session) {
+                      updateApprovalState(session, idx, actionId,
+                        approved ? (data.error ? "failed" : "success") : "rejected",
+                        data
+                      );
+                      if (data.reply) {
+                        addAssistantMessage(session, data.reply, data.tool_calls || [], null);
+                      }
+                    }
+                    return [...prev];
+                  });
+                } catch (e) {
+                  updateSessions(prev => {
+                    const session = prev.find(s => s.id === activeSession.id);
+                    if (session) {
+                      updateApprovalState(session, idx, actionId, "failed");
+                    }
+                    return [...prev];
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
             />
+          ))}
+        </div>
+        <div className="quick-commands">
+          {QUICK_COMMANDS.map(cmd => (
+            <button
+              key={cmd.label}
+              className="quick-cmd-btn"
+              onClick={() => handleQuickCommand(cmd.template)}
+            >
+              {cmd.label}
+            </button>
           ))}
         </div>
         <div className="input-area">
