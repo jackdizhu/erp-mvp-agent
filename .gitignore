@@ -7,3 +7,4 @@ tests/
 *.stackdump
 *test.py
 data/erp.db*
+log/*.jsonl

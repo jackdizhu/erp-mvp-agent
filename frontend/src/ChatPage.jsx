@@ -3,8 +3,7 @@ import { useSessionManager, createMessage, addAssistantMessage, updateApprovalSt
 import ApprovalCard from './ApprovalCard';
 import StreamingMessage from './StreamingMessage';
 import { useStreamingChat } from './useStreamingChat';
-
-const API_BASE = "http://localhost:8000";
+import { chatPost, chatConfirm } from './httpUtils';
 
 const QUICK_COMMANDS = [
   { label: "查询订单", template: "查询订单123" },
@@ -20,12 +19,7 @@ function MessageBubble({ message, messageIndex, activeSession, updateSessions, s
     setLoading(true);
     try {
       const history = truncateHistory(activeSession.messages);
-      const res = await fetch(`${API_BASE}/chat/confirm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action_id: actionId, approved, history })
-      });
-      const data = await res.json();
+      const data = await chatConfirm(activeSession.id, actionId, approved, history);
 
       updateSessions(prev => {
         const session = prev.find(s => s.id === activeSession.id);
@@ -280,12 +274,7 @@ export default function ChatPage() {
   const handleSyncSend = async (userMsg) => {
     try {
       const history = truncateHistory(activeSession.messages);
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg, history, session_id: activeId })
-      });
-      const data = await res.json();
+      const data = await chatPost(activeId, userMsg, history);
 
       updateSessions(prev => {
         const session = prev.find(s => s.id === activeId);
@@ -362,12 +351,7 @@ export default function ChatPage() {
                 setLoading(true);
                 try {
                   const history = truncateHistory(activeSession.messages);
-                  const res = await fetch(`${API_BASE}/chat/confirm`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action_id: actionId, approved, history, session_id: activeSession.id })
-                  });
-                  const data = await res.json();
+                  const data = await chatConfirm(activeSession.id, actionId, approved, history);
 
                   updateSessions(prev => {
                     const session = prev.find(s => s.id === activeSession.id);
