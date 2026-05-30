@@ -1,16 +1,11 @@
-from datetime import datetime
-
-from app.mock_erp import (
-    orders, inventory, suppliers,
-    get_next_order_id, reserve_inventory, release_inventory,
-    recalc_available, can_transition, can_mutate
+from erp_app.config import TOOL_LIMITS
+from erp_app.errors import tool_not_found, tool_limit, sys_error
+from erp_app.services.order_service import (
+    create_order_service, update_order_service, cancel_order_service,
+    delete_order_service
 )
-from app.errors import (
-    data_not_found, data_invalid_supplier, data_insufficient,
-    data_conflict, tool_not_found, tool_limit, tool_invalid_param,
-    sys_error
-)
-from app.config import TOOL_LIMITS
+from erp_app.services.inventory_service import adjust_inventory_service
+from erp_app.db import query_order, query_orders_batch, query_inventory, query_supplier
 
 TOOL_SCHEMAS = [
     {
@@ -215,157 +210,73 @@ TOOL_SCHEMAS = [
 ]
 
 
-def query_order(order_id: str) -> dict:
-    order = orders.get(order_id)
+def _tool_query_order(order_id: str) -> dict:
+    order = query_order(order_id)
     if not order:
+        from erp_app.errors import data_not_found
         raise ValueError(data_not_found("订单", order_id))
     return {"success": True, "data": order}
 
 
-def query_orders(order_ids: list) -> dict:
+def _tool_query_orders(order_ids: list) -> dict:
     max_batch = TOOL_LIMITS["query_orders"]["max_batch"]
     if len(order_ids) > max_batch:
         raise ValueError(tool_limit("query_orders", max_batch, len(order_ids)))
-    results = {}
-    for oid in order_ids:
-        order = orders.get(oid)
-        if order:
-            results[oid] = {"status": order["status"], "type": order["type"]}
-        else:
-            results[oid] = {"status": "not_found"}
+    results = query_orders_batch(order_ids)
     return {"success": True, "data": results}
 
 
-def query_inventory(sku: str) -> dict:
-    item = inventory.get(sku)
+def _tool_query_inventory(sku: str) -> dict:
+    item = query_inventory(sku)
     if not item:
+        from erp_app.errors import data_not_found
         raise ValueError(data_not_found("商品", sku))
     return {"success": True, "data": item}
 
 
-def query_supplier(supplier_id: str) -> dict:
-    supplier = suppliers.get(supplier_id)
+def _tool_query_supplier(supplier_id: str) -> dict:
+    from erp_app.db import query_supplier as db_q
+    supplier = db_q(supplier_id)
     if not supplier:
+        from erp_app.errors import data_invalid_supplier
         raise ValueError(data_invalid_supplier(supplier_id))
     return {"success": True, "data": supplier}
 
 
-def create_order(type: str, items: list, customer: str = None,
-                 supplier: str = None, address: str = None) -> dict:
+def _tool_create_order(type: str, items: list, customer: str = None,
+                       supplier: str = None, address: str = None) -> dict:
     max_items = TOOL_LIMITS["create_order"]["max_items"]
     if len(items) > max_items:
         raise ValueError(tool_limit("create_order", max_items, len(items)))
-
-    if type == "purchase" and supplier:
-        if supplier not in suppliers:
-            raise ValueError(data_invalid_supplier(supplier))
-
-    if type == "sales":
-        for item in items:
-            sku = item["sku"]
-            inv = inventory.get(sku)
-            if inv and inv["available"] < item["qty"]:
-                raise ValueError(data_insufficient(
-                    inv["name"], inv["available"], item["qty"], inv["unit"]
-                ))
-
-    new_id = get_next_order_id()
-    total = 0
-    enriched_items = []
-    for item in items:
-        inv = inventory.get(item["sku"], {})
-        enriched_items.append({
-            "sku": item["sku"],
-            "name": inv.get("name", item["sku"]),
-            "qty": item["qty"],
-            "price": inv.get("unit_price", 0)
-        })
-        total += item["qty"] * inv.get("unit_price", 0)
-
-    new_order = {
-        "order_id": new_id,
-        "type": type,
-        "status": "pending",
-        "customer": customer if type == "sales" else None,
-        "items": enriched_items,
-        "total": total,
-        "address": address if type == "sales" else None,
-        "supplier": supplier if type == "purchase" else None,
-        "created_at": datetime.now().strftime("%Y-%m-%d"),
-        "updated_at": datetime.now().strftime("%Y-%m-%d"),
-        "estimated_delivery": None,
-        "cancel_reason": None,
-        "notes": ""
-    }
-    orders[new_id] = new_order
-
-    if type == "sales":
-        for item in items:
-            reserve_inventory(item["sku"], item["qty"])
-
-    return {"success": True, "data": new_order}
+    return create_order_service(type, items, customer, supplier, address)
 
 
-def update_order(order_id: str, field: str, value: str) -> dict:
-    order = orders.get(order_id)
-    if not order:
-        raise ValueError(data_not_found("订单", order_id))
-    ok, msg = can_mutate(order_id, field)
-    if not ok:
-        raise ValueError(data_conflict("订单", order_id, msg))
-    order[field] = value
-    order["updated_at"] = datetime.now().strftime("%Y-%m-%d")
-    return {"success": True, "data": order}
+def _tool_update_order(order_id: str, field: str, value: str) -> dict:
+    return update_order_service(order_id, field, value)
 
 
-def cancel_order(order_id: str, reason: str) -> dict:
-    order = orders.get(order_id)
-    if not order:
-        raise ValueError(data_not_found("订单", order_id))
-    ok, msg = can_transition(order_id, "cancelled")
-    if not ok:
-        raise ValueError(data_conflict("订单", order_id, msg))
-    order["status"] = "cancelled"
-    order["cancel_reason"] = reason
-    order["updated_at"] = datetime.now().strftime("%Y-%m-%d")
-    if order["type"] == "sales":
-        for item in order["items"]:
-            release_inventory(item["sku"], item["qty"])
-    return {"success": True, "data": order}
+def _tool_cancel_order(order_id: str, reason: str) -> dict:
+    return cancel_order_service(order_id, reason)
 
 
-def delete_order(order_id: str) -> dict:
-    order = orders.get(order_id)
-    if not order:
-        raise ValueError(data_not_found("订单", order_id))
-    if order["status"] != "cancelled":
-        raise ValueError(data_conflict("订单", order_id, "仅可删除已取消的订单"))
-    del orders[order_id]
-    return {"success": True, "data": {"deleted_order_id": order_id}}
+def _tool_delete_order(order_id: str) -> dict:
+    return delete_order_service(order_id)
 
 
-def adjust_inventory(sku: str, delta: int, reason: str) -> dict:
-    item = inventory.get(sku)
-    if not item:
-        raise ValueError(data_not_found("商品", sku))
-    new_qty = item["qty"] + delta
-    if new_qty < 0:
-        raise ValueError(data_conflict("库存", sku, f"调整后数量不能为负数(当前{item['qty']}, 调整{delta})"))
-    item["qty"] = new_qty
-    recalc_available(sku)
-    return {"success": True, "data": item}
+def _tool_adjust_inventory(sku: str, delta: int, reason: str) -> dict:
+    return adjust_inventory_service(sku, delta, reason)
 
 
 TOOL_REGISTRY = {
-    "query_order": query_order,
-    "query_orders": query_orders,
-    "query_inventory": query_inventory,
-    "query_supplier": query_supplier,
-    "create_order": create_order,
-    "update_order": update_order,
-    "cancel_order": cancel_order,
-    "delete_order": delete_order,
-    "adjust_inventory": adjust_inventory,
+    "query_order": _tool_query_order,
+    "query_orders": _tool_query_orders,
+    "query_inventory": _tool_query_inventory,
+    "query_supplier": _tool_query_supplier,
+    "create_order": _tool_create_order,
+    "update_order": _tool_update_order,
+    "cancel_order": _tool_cancel_order,
+    "delete_order": _tool_delete_order,
+    "adjust_inventory": _tool_adjust_inventory,
 }
 
 
@@ -378,6 +289,6 @@ def execute_tool(name: str, args: dict) -> dict:
     except ValueError:
         raise
     except TypeError as e:
-        raise ValueError(tool_invalid_param(name, "", str(e)))
+        raise ValueError(sys_error(str(e)))
     except Exception as e:
         raise ValueError(sys_error(str(e)))

@@ -1,8 +1,8 @@
 ## Purpose
 
-Define the ERP data store including orders, inventory, suppliers, and business rules, backed by SQLite persistent storage in `erp_app/db.py` with service layer in `erp_app/services/`.
+Delta spec: Mock ERP data store transitions from in-memory Python dictionaries in `app/mock_erp.py` to SQLite persistent storage in `erp_app/db.py` with service layer in `erp_app/services/`.
 
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Orders data with status state machine
 The system SHALL maintain orders in a SQLite `orders` table (order_id, type, status, customer, total, address, supplier, created_at, updated_at, estimated_delivery, cancel_reason, notes) with line items in `order_items` table. Status transitions SHALL follow: pending→shipping→delivered, any→cancelled. The data SHALL be accessible via `erp_app/services/order_service.py` functions, not via direct dictionary access to `mock_erp.orders`.
@@ -52,17 +52,8 @@ The system SHALL maintain the next order ID in the database (either as a sequenc
 - **WHEN** create_order is called and the highest existing order_id is "125"
 - **THEN** new order gets order_id="126" and the next counter increments
 
-### Requirement: Order status determines allowed operations
-The system SHALL enforce that update and cancel operations are only allowed on orders in pending or shipping status, and delete is only allowed on cancelled orders.
+## REMOVED Requirements
 
-#### Scenario: Update pending order allowed
-- **WHEN** update_order is called on a pending order
-- **THEN** operation proceeds normally
-
-#### Scenario: Cancel delivered order rejected
-- **WHEN** cancel_order is called on a delivered order
-- **THEN** system returns DATA_CONFLICT error "订单已签收，无法取消"
-
-#### Scenario: Delete non-cancelled order rejected
-- **WHEN** delete_order is called on a shipping order
-- **THEN** system returns DATA_CONFLICT error "仅可删除已取消的订单"
+### Requirement: Mock ERP in-memory data store
+**Reason**: Replaced by SQLite persistent storage in erp_app
+**Migration**: All mock_erp.orders/inventory/suppliers dictionary access replaced with db.py CRUD calls via service layer

@@ -4,9 +4,9 @@ import asyncio
 from typing import Callable, Optional
 
 from app.llm import call_llm, call_llm_stream, SYSTEM_PROMPT
-from app.tools import TOOL_SCHEMAS, execute_tool
-from app.config import TOOL_RISK_LEVELS, TOOL_LIMITS, HISTORY_WINDOW
-from app.approval import approval_manager
+from app.erp_client import erp_client
+from app.config import HISTORY_WINDOW
+from app.approval_core import approval_core
 from app.intent_detector import detect_tool_intent
 from app.errors import (
     tool_limit, tool_expired, build_error_response,
@@ -37,7 +37,7 @@ def build_messages(message: str, history: list) -> list:
 def chat(message: str, history: list) -> dict:
     try:
         messages = build_messages(message, history)
-        response = call_llm(messages, TOOL_SCHEMAS)
+        response = call_llm(messages, erp_client.get_tools())
 
         if response["finish_reason"] == "stop" or not response["tool_calls"]:
             reply = _strip_think_tags(response["content"]) or ""
@@ -73,7 +73,7 @@ def _force_tool_retry(messages: list, user_message: str, expected_tool: str, pre
         }
     ]
 
-    retry_response = call_llm(retry_messages, TOOL_SCHEMAS)
+    retry_response = call_llm(retry_messages, erp_client.get_tools())
 
     if retry_response["finish_reason"] == "tool_calls" and retry_response["tool_calls"]:
         return _handle_tool_calls(retry_response["tool_calls"], retry_messages)
@@ -90,7 +90,7 @@ def _handle_tool_calls(tool_calls, messages: list) -> dict:
         tool_name = tc.function.name
         tool_args = json.loads(tc.function.arguments)
 
-        risk = TOOL_RISK_LEVELS.get(tool_name, "SAFE")
+        risk = erp_client.get_risk_level(tool_name)
 
         if risk == "SAFE":
             result = _execute_safe(tool_name, tool_args)
@@ -104,7 +104,7 @@ def _handle_tool_calls(tool_calls, messages: list) -> dict:
 
         elif risk == "DANGER":
             has_danger = True
-            action = approval_manager.create_pending(
+            action = approval_core.create_pending(
                 tool_name, tool_args, messages
             )
             if not action:
@@ -133,7 +133,7 @@ def _handle_tool_calls(tool_calls, messages: list) -> dict:
 
 def _execute_safe(tool_name: str, tool_args: dict) -> dict:
     try:
-        result = execute_tool(tool_name, tool_args)
+        result = erp_client.execute_tool(tool_name, tool_args)
         return {
             "tool": tool_name,
             "args": tool_args,
@@ -149,11 +149,15 @@ def _execute_safe(tool_name: str, tool_args: dict) -> dict:
 
 
 def _execute_caution(tool_name: str, tool_args: dict) -> dict:
-    limits = TOOL_LIMITS.get(tool_name, {})
-    if "max_items" in limits:
+    if tool_name == "create_order":
         items = tool_args.get("items", [])
-        if len(items) > limits["max_items"]:
-            err = tool_limit(tool_name, limits["max_items"], len(items))
+        if len(items) > 5:
+            err = tool_limit(tool_name, 5, len(items))
+            return build_error_response(err)
+    if tool_name == "update_order":
+        items = tool_args.get("items", [])
+        if len(items) > 5:
+            err = tool_limit(tool_name, 5, len(items))
             return build_error_response(err)
     return _execute_safe(tool_name, tool_args)
 
@@ -184,7 +188,7 @@ def _generate_reply_from_results(results: list, messages: list) -> dict:
 
 
 def confirm_action(action_id: str, approved: bool, history: list) -> dict:
-    result = approval_manager.confirm(action_id, approved)
+    result = approval_core.confirm(action_id, approved)
 
     if result is None:
         err = tool_expired(action_id)
@@ -206,7 +210,7 @@ def confirm_action(action_id: str, approved: bool, history: list) -> dict:
     messages = action["messages_context"]
 
     try:
-        exec_result = execute_tool(action["tool"], action["args"])
+        exec_result = erp_client.execute_tool(action["tool"], action["args"])
         tool_call_record = {
             "tool": action["tool"],
             "args": action["args"],
@@ -236,7 +240,7 @@ def stream_chat(message: str, history: list, on_event: Callable[[str, dict], Non
         pending = None
         has_danger = False
 
-        response = call_llm(messages, TOOL_SCHEMAS)
+        response = call_llm(messages, erp_client.get_tools())
 
         if response["finish_reason"] == "stop" or not response["tool_calls"]:
             reply = _strip_think_tags(response["content"]) or ""
@@ -331,7 +335,7 @@ def _handle_tool_calls_stream(tool_calls, messages: list, on_event: Callable[[st
         tool_name = tc.function.name
         tool_args = json.loads(tc.function.arguments)
 
-        risk = TOOL_RISK_LEVELS.get(tool_name, "SAFE")
+        risk = erp_client.get_risk_level(tool_name)
 
         on_event("tool_call", {
             "tool": tool_name,
@@ -357,7 +361,7 @@ def _handle_tool_calls_stream(tool_calls, messages: list, on_event: Callable[[st
 
         elif risk == "DANGER":
             has_danger = True
-            action = approval_manager.create_pending(
+            action = approval_core.create_pending(
                 tool_name, tool_args, messages
             )
             if not action:
@@ -406,7 +410,7 @@ def _stream_force_tool_retry(messages: list, user_message: str, expected_tool: s
         }
     ]
 
-    retry_response = call_llm(retry_messages, TOOL_SCHEMAS)
+    retry_response = call_llm(retry_messages, erp_client.get_tools())
 
     if retry_response["finish_reason"] == "tool_calls" and retry_response["tool_calls"]:
         tool_calls_data = _handle_tool_calls_stream(

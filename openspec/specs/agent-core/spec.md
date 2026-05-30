@@ -13,18 +13,18 @@ The system SHALL implement an agent loop that sends messages + tool schemas to L
 
 #### Scenario: Single tool call and reply
 - **WHEN** user sends "查询订单123" and LLM returns tool_calls for query_order
-- **THEN** agent executes the tool, sends result back to LLM, and returns the generated reply
+- **THEN** agent calls `erp_client.execute_tool("query_order", {"order_id": "123"})`, gets result, sends to LLM, returns reply
 
 #### Scenario: Multiple sequential tool calls
 - **WHEN** user sends "查一下订单123、124、125状态" and LLM returns multiple tool_calls
-- **THEN** agent executes all tool calls, collects results, sends them back to LLM, and returns the consolidated reply
+- **THEN** agent executes all tool calls via `erp_client.execute_tool()`, collects results, sends them back to LLM, and returns the consolidated reply
 
 ### Requirement: Risk-level-routing for tool calls
-The system SHALL check each tool call's risk level (SAFE/CAUTION/DANGER) before execution and route accordingly: SAFE executes directly, CAUTION checks limits then executes, DANGER creates pending action for approval.
+The system SHALL check each tool call's risk level using `TOOL_RISK_LEVELS` from `erp_app/config.py` (accessed via `erp_client`) instead of `app/config.py`. SAFE executes directly, CAUTION checks limits then executes, DANGER creates pending action for approval.
 
 #### Scenario: SAFE tool executes directly
 - **WHEN** LLM returns tool_call for query_order (SAFE)
-- **THEN** agent executes the tool immediately without approval
+- **THEN** agent executes via `erp_client.execute_tool()` immediately without approval
 
 #### Scenario: CAUTION tool checks limits
 - **WHEN** LLM returns tool_call for create_order with qty=3 (within limit)
@@ -36,10 +36,10 @@ The system SHALL check each tool call's risk level (SAFE/CAUTION/DANGER) before 
 
 #### Scenario: DANGER tool creates pending action
 - **WHEN** LLM returns tool_call for update_order
-- **THEN** agent creates a pending action and returns it to the frontend for approval
+- **THEN** agent creates a pending action via `approval_core.create_pending()` and retrieves detail via `erp_client.get_approval_detail()`, returns to frontend for approval
 
 ### Requirement: System prompt with tool descriptions
-The system SHALL construct a system prompt that defines the agent as an ERP assistant and lists all available tools with their descriptions and parameter schemas.
+The system SHALL obtain tool schemas via `erp_client.get_tools()` instead of importing `TOOL_SCHEMAS` from `app/tools.py`. The system SHALL construct a system prompt that defines the agent as an ERP assistant and lists all available tools with their descriptions and parameter schemas, passing schemas to LLM via the tools parameter.
 
 #### Scenario: System prompt includes tool context
 - **WHEN** agent constructs messages for LLM

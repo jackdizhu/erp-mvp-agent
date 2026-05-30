@@ -9,7 +9,7 @@ The system SHALL create a pending action with a unique ID, store the tool name, 
 
 #### Scenario: DANGER tool creates pending action
 - **WHEN** agent encounters a DANGER-level tool call for update_order
-- **THEN** system generates unique action_id, stores tool/args/messages_context/created_at, and returns pending_action to frontend
+- **THEN** approval_core generates unique action_id, stores tool/args/messages_context/created_at, retrieves summary template from erp_app config, and returns pending_action to frontend
 
 ### Requirement: Pending action TTL expiration
 The system SHALL set a TTL of 300 seconds (5 minutes, configurable) on each pending action, after which the action expires and cannot be confirmed.
@@ -51,12 +51,23 @@ The system SHALL generate a human-readable summary for each pending action using
 - **WHEN** pending action for update_order(order_id="123", field="address", value="北京") is created
 - **THEN** summary is "修改订单123的收货地址"
 
+### Requirement: Action summary generation source
+The system SHALL generate a human-readable summary for each pending action using `ACTION_SUMMARIES` templates from `erp_app/config.py`, not from `app/config.py`.
+
 ### Requirement: Action detail for approval card
-The system SHALL generate a detail object for each pending action containing action_type, fields array (name-value pairs), and irreversible flag, for frontend approval card rendering.
+The system SHALL generate a detail object for each pending action by calling `erp_app/approval_detail.py`, which queries SQLite to get the original data (e.g., order's current status) and compares old vs new values. The detail SHALL contain action_type, fields array (name-value pairs), and irreversible flag. Direct dictionary access to `mock_erp.orders`/`inventory` SHALL NOT be used.
 
 #### Scenario: Delete order detail
 - **WHEN** pending action for delete_order(order_id="125") is created
-- **THEN** detail includes action_type="delete_order", fields=[{name:"订单编号",value:"125"},{name:"当前状态",value:"已取消"}], irreversible=true
+- **THEN** erp_app queries SQLite for order 125, returns detail with action_type="delete_order", fields=[{name:"订单编号",value:"125"},{name:"当前状态",value:"cancelled"}], irreversible=true
+
+#### Scenario: Update order detail shows old vs new
+- **WHEN** pending action for update_order(order_id="123", field="address", value="北京") is created
+- **THEN** erp_app queries SQLite for order 123's current address, returns fields containing both original and new address values
+
+#### Scenario: Adjust inventory detail shows before/after
+- **WHEN** pending action for adjust_inventory(sku="iPhone-15", delta=-20) is created
+- **THEN** erp_app queries SQLite for current qty, returns fields with current_qty, delta, and new_qty
 
 ### Requirement: Expired actions cleanup
 The system SHALL clean up expired pending actions on each new request to prevent memory leaks, with max_pending=10 limit.

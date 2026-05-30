@@ -6,3 +6,4 @@ node_modules/
 tests/
 *.stackdump
 *test.py
+data/erp.db*

@@ -3,8 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
+import queue
+import threading
 
 from app.agent import chat, confirm_action, stream_chat, format_sse_event
+from erp_app.main import router as erp_router
+from erp_app.db import init_db as init_erp_db
+from erp_app.seed import seed_data
 
 app = FastAPI(title="ERP Agent MVP")
 
@@ -15,6 +20,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(erp_router)
+
+
+@app.on_event("startup")
+def on_startup():
+    init_erp_db()
+    seed_data()
 
 
 class HistoryMessage(BaseModel):
@@ -80,8 +93,6 @@ async def confirm_endpoint(req: ConfirmRequest):
 @app.post("/chat/stream")
 async def stream_endpoint(req: ChatRequest):
     history = [h.model_dump() for h in req.history]
-    import queue
-    import threading
 
     q = queue.Queue()
 
