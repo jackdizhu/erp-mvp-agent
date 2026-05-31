@@ -2,8 +2,48 @@ import { useState, useEffect } from 'react';
 import { useSessionManager, createMessage, addAssistantMessage, updateApprovalState, autoTitle, truncateHistory } from './SessionManager';
 import ApprovalCard from './ApprovalCard';
 import StreamingMessage from './StreamingMessage';
+import McpErrorNotification from './McpErrorNotification';
 import { useStreamingChat } from './useStreamingChat';
 import { chatPost, chatConfirm } from './httpUtils';
+
+const MCP_ERROR_MESSAGES = {
+  MCP_SERVICE_UNAVAILABLE: { msg: "ERP服务暂时不可用，请稍后重试", recoverable: true },
+  MCP_CONNECTION_TIMEOUT: { msg: "MCP服务连接超时，请稍后重试", recoverable: true },
+  MCP_INVALID_RESPONSE: { msg: "MCP服务返回异常，请稍后重试", recoverable: true },
+  MCP_TOOL_NOT_FOUND: { msg: "MCP服务不支持此操作", recoverable: false },
+  MCP_AUTH_FAILED: { msg: "MCP服务认证失败，请检查配置", recoverable: false },
+};
+
+const formatStreamError = (err) => {
+  if (err?.isNetworkError || err?.status === 0) {
+    return "[网络] 无法连接到服务器，请检查服务是否启动";
+  }
+  
+  const mcpCode = err?.code || err?.error?.code;
+  if (mcpCode && MCP_ERROR_MESSAGES[mcpCode]) {
+    const mcpInfo = MCP_ERROR_MESSAGES[mcpCode];
+    return {
+      message: mcpInfo.msg,
+      recoverable: mcpInfo.recoverable,
+      code: mcpCode
+    };
+  }
+  
+  const status = err?.status || 0;
+  const message = err?.message || err?.statusText || "未知错误";
+  const userMessages = {
+    404: "流式接口不存在，请检查服务配置",
+    500: "服务器内部错误，请查看后端日志",
+    502: "网关错误，后端服务可能未响应",
+    503: "服务暂不可用，请稍后重试",
+    504: "网关超时，后端处理时间过长"
+  };
+  const userMsg = userMessages[status];
+  if (userMsg) {
+    return `[${status}] ${userMsg}`;
+  }
+  return `[${status}] ${message.slice(0, 100)}`;
+};
 
 const QUICK_COMMANDS = [
   { label: "查询订单", template: "查询订单123" },
@@ -105,6 +145,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [useStream, setUseStream] = useState(true);
+  const [mcpError, setMcpError] = useState(null);
   const { startStream, stopStream } = useStreamingChat();
 
   const hasPendingApproval = activeSession?.messages?.some(m =>
@@ -251,6 +292,18 @@ export default function ChatPage() {
         setLoading(false);
       },
       onError: (err) => {
+        const errorResult = formatStreamError(err);
+        const isMCPError = typeof errorResult === 'object' && errorResult.code;
+        const errorMessage = isMCPError ? errorResult.message : errorResult;
+        
+        if (isMCPError) {
+          setMcpError({
+            code: errorResult.code,
+            message: errorResult.message,
+            recoverable: errorResult.recoverable
+          });
+        }
+        
         updateSessions(prev => {
           const idx = prev.findIndex(s => s.id === activeId);
           if (idx === -1) return prev;
@@ -259,8 +312,14 @@ export default function ChatPage() {
           const msg = { ...msgs[msgs.length - 1] };
           msg.isStreaming = false;
           msg.isDone = true;
-          msg.content = "流式连接失败，请重试";
+          msg.content = errorMessage;
           msg.thinkingState = null;
+          if (isMCPError) {
+            msg.mcpError = {
+              code: errorResult.code,
+              recoverable: errorResult.recoverable
+            };
+          }
           msgs[msgs.length - 1] = msg;
           session.messages = msgs;
           prev[idx] = session;
@@ -323,6 +382,10 @@ export default function ChatPage() {
         </div>
       )}
       <div className="chat-area">
+        <McpErrorNotification 
+          error={mcpError} 
+          onDismiss={() => setMcpError(null)} 
+        />
         <div className="chat-header">
           <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
           <span>ERP Agent Chat</span>

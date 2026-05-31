@@ -1,20 +1,27 @@
 import os
+import logging
 from pathlib import Path
 from typing import Callable
 
 from dotenv import load_dotenv
 
-env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(dotenv_path=env_path)
+_project_root = Path(__file__).resolve().parents[1]
+load_dotenv(_project_root / ".default.env")
+load_dotenv(_project_root / ".local.env", override=True)
 
 from openai import OpenAI, APITimeoutError, RateLimitError, BadRequestError
 
+from app.config import TIMEOUT_CONFIG
 from app.errors import (
     llm_timeout, llm_overload, llm_token_limit, llm_invalid_response
 )
 from app.prompt_config import build_system_prompt
+from erp_app.tools_format import get_openai_tools
 
 SYSTEM_PROMPT = build_system_prompt()
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 client_kwargs = {
     "api_key": os.getenv("OPENAI_API_KEY")
@@ -24,6 +31,8 @@ if base_url:
     client_kwargs["base_url"] = base_url
 client = OpenAI(**client_kwargs)
 
+LLM_TIMEOUT = TIMEOUT_CONFIG["llm_call"]
+
 
 def call_llm(messages: list, tools: list = None) -> dict:
     try:
@@ -32,10 +41,14 @@ def call_llm(messages: list, tools: list = None) -> dict:
             "messages": messages,
         }
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = get_openai_tools()
             kwargs["tool_choice"] = "auto"
 
         response = client.chat.completions.create(**kwargs)
+
+        if not response.choices:
+            logger.warning(f"LLM returned empty choices, model={kwargs.get('model')}, messages_count={len(messages)}")
+            raise ValueError(llm_invalid_response("LLM返回空choices"))
 
         choice = response.choices[0]
         finish_reason = choice.finish_reason
@@ -56,6 +69,8 @@ def call_llm(messages: list, tools: list = None) -> dict:
         if "token" in str(e).lower() or "length" in str(e).lower():
             raise ValueError(llm_token_limit(str(e)))
         raise ValueError(llm_invalid_response(str(e)))
+    except IndexError:
+        raise ValueError(llm_invalid_response("LLM返回空响应，无choices"))
     except Exception as e:
         raise ValueError(llm_invalid_response(str(e)))
 
@@ -68,16 +83,23 @@ def call_llm_stream(messages: list, tools: list = None, on_chunk: Callable[[str]
             "stream": True,
         }
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = get_openai_tools()
             kwargs["tool_choice"] = "auto"
 
         stream = client.chat.completions.create(**kwargs)
 
         full_content = ""
         tool_calls = None
+        last_chunk = None
+        has_valid_choice = False
 
         for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
+            if not chunk.choices:
+                continue
+
+            last_chunk = chunk
+            has_valid_choice = True
+            delta = chunk.choices[0].delta
             if delta is None:
                 continue
 
@@ -97,7 +119,11 @@ def call_llm_stream(messages: list, tools: list = None, on_chunk: Callable[[str]
                     else:
                         tool_calls.append(tc)
 
-        choice = chunk.choices[0] if chunk.choices else None
+        if not has_valid_choice:
+            logger.warning(f"LLM stream returned empty choices, model={kwargs.get('model')}")
+            raise ValueError(llm_invalid_response("LLM流式返回空响应"))
+
+        choice = last_chunk.choices[0] if last_chunk and last_chunk.choices else None
         finish_reason = choice.finish_reason if choice else "stop"
 
         return {
@@ -114,5 +140,7 @@ def call_llm_stream(messages: list, tools: list = None, on_chunk: Callable[[str]
         if "token" in str(e).lower() or "length" in str(e).lower():
             raise ValueError(llm_token_limit(str(e)))
         raise ValueError(llm_invalid_response(str(e)))
+    except IndexError:
+        raise ValueError(llm_invalid_response("LLM流式返回空响应，无choices"))
     except Exception as e:
         raise ValueError(llm_invalid_response(str(e)))

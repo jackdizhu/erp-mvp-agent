@@ -5,7 +5,7 @@ from typing import Callable, Optional
 from datetime import datetime
 
 from app.llm import call_llm, call_llm_stream, SYSTEM_PROMPT
-from app.erp_client import erp_client
+from app.clients import client_factory
 from app.config import HISTORY_WINDOW
 from app.approval_core import approval_core
 from app.intent_detector import detect_tool_intent
@@ -45,9 +45,9 @@ def chat(message: str, history: list, logger=None) -> dict:
         messages = build_messages(message, history)
 
         if logger:
-            logger.log_llm_request(messages, erp_client.get_tools())
+            logger.log_llm_request(messages, client_factory.get_all_tools())
 
-        response = call_llm(messages, erp_client.get_tools())
+        response = call_llm(messages, client_factory.get_all_tools())
 
         if logger:
             logger.log_llm_response(
@@ -107,9 +107,9 @@ def _force_tool_retry(messages: list, user_message: str, expected_tool: str, pre
     ]
 
     if logger:
-        logger.log_llm_request(retry_messages, erp_client.get_tools())
+        logger.log_llm_request(retry_messages, client_factory.get_all_tools())
 
-    retry_response = call_llm(retry_messages, erp_client.get_tools())
+    retry_response = call_llm(retry_messages, client_factory.get_all_tools())
 
     if logger:
         logger.log_llm_response(
@@ -133,7 +133,7 @@ def _handle_tool_calls(tool_calls, messages: list, logger=None) -> dict:
         tool_name = tc.function.name
         tool_args = json.loads(tc.function.arguments)
 
-        risk = erp_client.get_risk_level(tool_name)
+        risk = client_factory.get_risk_level(tool_name)
 
         if logger:
             logger.log_tool_call(tool_name, tool_args, risk)
@@ -181,7 +181,7 @@ def _handle_tool_calls(tool_calls, messages: list, logger=None) -> dict:
 
 def _execute_safe(tool_name: str, tool_args: dict, logger=None) -> dict:
     try:
-        result = erp_client.execute_tool(tool_name, tool_args)
+        result = client_factory.execute_tool(tool_name, tool_args)
         if logger:
             logger.log_tool_result(tool_name, result=result)
         return {
@@ -277,7 +277,7 @@ def confirm_action(action_id: str, approved: bool, history: list, logger=None) -
     messages = action["messages_context"]
 
     try:
-        exec_result = erp_client.execute_tool(action["tool"], action["args"])
+        exec_result = client_factory.execute_tool(action["tool"], action["args"])
         tool_call_record = {
             "tool": action["tool"],
             "args": action["args"],
@@ -313,9 +313,9 @@ def stream_chat(message: str, history: list, on_event: Callable[[str, dict], Non
         has_danger = False
 
         if logger:
-            logger.log_llm_request(messages, erp_client.get_tools())
+            logger.log_llm_request(messages, client_factory.get_all_tools())
 
-        response = call_llm(messages, erp_client.get_tools())
+        response = call_llm(messages, client_factory.get_all_tools())
 
         if logger:
             logger.log_llm_response(
@@ -447,7 +447,7 @@ def _handle_tool_calls_stream(tool_calls, messages: list, on_event: Callable[[st
         tool_name = tc.function.name
         tool_args = json.loads(tc.function.arguments)
 
-        risk = erp_client.get_risk_level(tool_name)
+        risk = client_factory.get_risk_level(tool_name)
 
         on_event("tool_call", {
             "tool": tool_name,
@@ -499,6 +499,12 @@ def _handle_tool_calls_stream(tool_calls, messages: list, on_event: Callable[[st
                 "action_id": action["id"]
             })
 
+        else:
+            if logger:
+                logger.log_error("unknown_risk", f"Unknown risk level '{risk}' for tool '{tool_name}', treating as SAFE")
+            result = _execute_safe(tool_name, tool_args, logger)
+            results.append(result)
+
         on_event("tool_result", {
             "tool": tool_name,
             "result": results[-1].get("result"),
@@ -536,9 +542,9 @@ def _stream_force_tool_retry(messages: list, user_message: str, expected_tool: s
     ]
 
     if logger:
-        logger.log_llm_request(retry_messages, erp_client.get_tools())
+        logger.log_llm_request(retry_messages, client_factory.get_all_tools())
 
-    retry_response = call_llm(retry_messages, erp_client.get_tools())
+    retry_response = call_llm(retry_messages, client_factory.get_all_tools())
 
     if logger:
         logger.log_llm_response(

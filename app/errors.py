@@ -205,6 +205,56 @@ def sys_error(detail: str = "") -> AgentError:
     )
 
 
+def mcp_service_unavailable(detail: str = "") -> AgentError:
+    return AgentError(
+        code="MCP_SERVICE_UNAVAILABLE",
+        message="ERP服务暂时不可用，请稍后重试",
+        detail=detail,
+        source="system",
+        recoverable=True
+    )
+
+
+def mcp_connection_timeout(detail: str = "") -> AgentError:
+    return AgentError(
+        code="MCP_CONNECTION_TIMEOUT",
+        message="MCP服务连接超时，请稍后重试",
+        detail=detail,
+        source="system",
+        recoverable=True
+    )
+
+
+def mcp_invalid_response(detail: str = "") -> AgentError:
+    return AgentError(
+        code="MCP_INVALID_RESPONSE",
+        message="MCP服务返回异常，请稍后重试",
+        detail=detail,
+        source="llm",
+        recoverable=True
+    )
+
+
+def mcp_tool_not_found(tool_name: str) -> AgentError:
+    return AgentError(
+        code="MCP_TOOL_NOT_FOUND",
+        message=f"MCP服务不支持此操作: {tool_name}",
+        detail=f"MCP tool '{tool_name}' not found",
+        source="tool",
+        recoverable=False
+    )
+
+
+def mcp_auth_failed(detail: str = "") -> AgentError:
+    return AgentError(
+        code="MCP_AUTH_FAILED",
+        message="MCP服务认证失败，请检查配置",
+        detail=detail,
+        source="system",
+        recoverable=False
+    )
+
+
 def build_error_response(error: AgentError, reply: str = "") -> dict:
     if not reply:
         reply = error.message

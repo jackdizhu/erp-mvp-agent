@@ -9,202 +9,175 @@ from erp_app.db import query_order, query_orders_batch, query_inventory, query_s
 
 TOOL_SCHEMAS = [
     {
-        "type": "function",
-        "function": {
-            "name": "query_order",
-            "description": "根据订单ID查询订单详情",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "order_id": {
-                        "type": "string",
-                        "description": "订单编号"
-                    }
-                },
-                "required": ["order_id"]
-            }
+        "name": "query_order",
+        "description": "根据订单ID查询订单详情",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "订单编号"
+                }
+            },
+            "required": ["order_id"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "query_orders",
-            "description": "批量查询多个订单的状态",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "order_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "订单编号列表"
-                    }
-                },
-                "required": ["order_ids"]
-            }
+        "name": "query_orders",
+        "description": "批量查询多个订单的状态",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "order_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "订单编号列表"
+                }
+            },
+            "required": ["order_ids"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "query_inventory",
-            "description": "根据商品SKU查询库存信息",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "sku": {
-                        "type": "string",
-                        "description": "商品SKU编号"
-                    }
-                },
-                "required": ["sku"]
-            }
+        "name": "query_inventory",
+        "description": "根据商品SKU查询库存信息",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sku": {
+                    "type": "string",
+                    "description": "商品SKU编号"
+                }
+            },
+            "required": ["sku"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "query_supplier",
-            "description": "根据供应商ID查询供应商信息",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "supplier_id": {
-                        "type": "string",
-                        "description": "供应商编号"
-                    }
-                },
-                "required": ["supplier_id"]
-            }
+        "name": "query_supplier",
+        "description": "根据供应商ID查询供应商信息",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "supplier_id": {
+                    "type": "string",
+                    "description": "供应商编号"
+                }
+            },
+            "required": ["supplier_id"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "create_order",
-            "description": "创建销售订单或采购订单",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "type": {
-                        "type": "string",
-                        "enum": ["sales", "purchase"],
-                        "description": "订单类型: sales=销售订单, purchase=采购订单"
-                    },
+        "name": "create_order",
+        "description": "创建销售订单或采购订单",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["sales", "purchase"],
+                    "description": "订单类型: sales=销售订单, purchase=采购订单"
+                },
+                "items": {
+                    "type": "array",
                     "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "sku": {"type": "string", "description": "商品SKU"},
-                                "qty": {"type": "integer", "description": "数量"}
-                            },
-                            "required": ["sku", "qty"]
+                        "type": "object",
+                        "properties": {
+                            "sku": {"type": "string", "description": "商品SKU"},
+                            "qty": {"type": "integer", "description": "数量"}
                         },
-                        "description": "订单商品列表"
+                        "required": ["sku", "qty"]
                     },
-                    "customer": {
-                        "type": "string",
-                        "description": "客户名称(销售订单必填)"
-                    },
-                    "supplier": {
-                        "type": "string",
-                        "description": "供应商编号(采购订单必填)"
-                    },
-                    "address": {
-                        "type": "string",
-                        "description": "收货地址(销售订单)"
-                    }
+                    "description": "订单商品列表"
                 },
-                "required": ["type", "items"]
-            }
+                "customer": {
+                    "type": "string",
+                    "description": "客户名称(销售订单必填)"
+                },
+                "supplier": {
+                    "type": "string",
+                    "description": "供应商编号(采购订单必填)"
+                },
+                "address": {
+                    "type": "string",
+                    "description": "收货地址(销售订单)"
+                }
+            },
+            "required": ["type", "items"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "update_order",
-            "description": "修改订单的指定字段",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "order_id": {
-                        "type": "string",
-                        "description": "订单编号"
-                    },
-                    "field": {
-                        "type": "string",
-                        "description": "要修改的字段名(如address, notes等)"
-                    },
-                    "value": {
-                        "type": "string",
-                        "description": "新的字段值"
-                    }
+        "name": "update_order",
+        "description": "修改订单的指定字段",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "订单编号"
                 },
-                "required": ["order_id", "field", "value"]
-            }
+                "field": {
+                    "type": "string",
+                    "description": "要修改的字段名(如address, notes等)"
+                },
+                "value": {
+                    "type": "string",
+                    "description": "新的字段值"
+                }
+            },
+            "required": ["order_id", "field", "value"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "cancel_order",
-            "description": "取消订单并释放预留库存",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "order_id": {
-                        "type": "string",
-                        "description": "订单编号"
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "取消原因"
-                    }
+        "name": "cancel_order",
+        "description": "取消订单并释放预留库存",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "订单编号"
                 },
-                "required": ["order_id", "reason"]
-            }
+                "reason": {
+                    "type": "string",
+                    "description": "取消原因"
+                }
+            },
+            "required": ["order_id", "reason"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "delete_order",
-            "description": "删除已取消的订单(仅限cancelled状态)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "order_id": {
-                        "type": "string",
-                        "description": "订单编号"
-                    }
-                },
-                "required": ["order_id"]
-            }
+        "name": "delete_order",
+        "description": "删除已取消的订单(仅限cancelled状态)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "订单编号"
+                }
+            },
+            "required": ["order_id"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "adjust_inventory",
-            "description": "调整商品库存数量(正数入库/负数出库)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "sku": {
-                        "type": "string",
-                        "description": "商品SKU编号"
-                    },
-                    "delta": {
-                        "type": "integer",
-                        "description": "调整数量(正数入库/负数出库)"
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "调整原因"
-                    }
+        "name": "adjust_inventory",
+        "description": "调整商品库存数量(正数入库/负数出库)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sku": {
+                    "type": "string",
+                    "description": "商品SKU编号"
                 },
-                "required": ["sku", "delta", "reason"]
-            }
+                "delta": {
+                    "type": "integer",
+                    "description": "调整数量(正数入库/负数出库)"
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "调整原因"
+                }
+            },
+            "required": ["sku", "delta", "reason"]
         }
     }
 ]

@@ -1,5 +1,6 @@
 .env
 *.local
+*.local.*
 __pycache__/
 .DS_Store/
 node_modules/
@@ -8,3 +9,4 @@ tests/
 *test.py
 data/erp.db*
 log/*.jsonl
+*.ini

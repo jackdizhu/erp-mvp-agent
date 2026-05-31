@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:8000";
+const API_PORT = import.meta.env.VITE_API_PORT || "9000";
+const API_BASE = `http://localhost:${API_PORT}`;
 
 export async function chatPost(sessionId, message, history) {
   const res = await fetch(`${API_BASE}/chat`, {
@@ -31,9 +32,36 @@ export async function chatStream(sessionId, message, history, signal) {
 export async function chatStreamReader(sessionId, message, history, callbacks) {
   const { onThinking, onToolCall, onToolResult, onReplyChunk, onDone, onError } = callbacks;
 
-  const res = await chatStream(sessionId, message, history);
+  let res;
+  try {
+    res = await chatStream(sessionId, message, history);
+  } catch (err) {
+    const errorObj = {
+      status: 0,
+      statusText: "Network Error",
+      message: err.message || "Failed to connect to server",
+      isNetworkError: true
+    };
+    onError?.(errorObj);
+    return;
+  }
+
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+    let errorBody = "";
+    try {
+      errorBody = await res.text();
+    } catch (_) {
+      errorBody = res.statusText;
+    }
+
+    const errorObj = {
+      status: res.status,
+      statusText: res.statusText,
+      message: errorBody.slice(0, 200),
+      isNetworkError: false
+    };
+    onError?.(errorObj);
+    return;
   }
 
   const reader = res.body.getReader();

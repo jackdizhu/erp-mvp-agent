@@ -40,6 +40,17 @@ The erp_app package SHALL define a FastAPI APIRouter with endpoints for tool exe
 - **WHEN** erp_app.main.router is mounted on the main FastAPI app
 - **THEN** routes are accessible at `/erp/tools/schemas`, `/erp/tools/execute`, `/erp/approval/detail`
 
+### Requirement: MCP unified endpoint at /mcp and /
+The MCP Service (`erp_mcp_service/`) SHALL expose a unified MCP endpoint at `/mcp` and `/` that dispatches JSON-RPC requests by `method` field.
+
+#### Scenario: MCP unified endpoint at /mcp
+- **WHEN** MCP Service receives `POST /mcp` with `method: "tools/list"`
+- **THEN** the system dispatches to the tools list handler and returns JSON-RPC response
+
+#### Scenario: MCP unified endpoint at /
+- **WHEN** MCP Service receives `POST /` with `method: "initialize"`
+- **THEN** the system dispatches to the initialize handler and returns JSON-RPC response
+
 ### Requirement: Risk level and limits configuration in erp_app
 The system SHALL define `TOOL_RISK_LEVELS`, `TOOL_LIMITS`, and `ACTION_SUMMARIES` in `erp_app/config.py`, removing them from `app/config.py`.
 

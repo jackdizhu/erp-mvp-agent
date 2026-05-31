@@ -4,12 +4,22 @@ Define the tool system including schema definitions, registry, risk levels, quan
 
 ## Requirements
 
-### Requirement: Tool schema definition in OpenAI format
-The system SHALL define all tool schemas using OpenAI's function calling format (type="function", function with name/description/parameters) in `erp_app/tools.py`, and the agent SHALL obtain schemas via `erp_client.get_tools()` instead of importing `TOOL_SCHEMAS` directly. The schemas SHALL be passed to the LLM via the tools parameter.
+### Requirement: Tool schema definition in MCP native format
+The system SHALL define all tool schemas using MCP native format (`name`, `description`, `inputSchema`) in `erp_app/tools.py`. LLM calls SHALL use `erp_app/tools_format.get_openai_tools()` to convert to OpenAI format. MCP service tools SHALL use `mcp_` prefix for tool names (e.g., `mcp_query_order`).
 
 #### Scenario: Tool schemas passed to LLM
 - **WHEN** agent calls LLM
-- **THEN** all 9 tool schemas are obtained via `erp_client.get_tools()` and included in the tools parameter
+- **THEN** tool schemas are converted to OpenAI format via `get_openai_tools()` and included in the tools parameter
+
+#### Scenario: MCP service tool naming
+- **WHEN** MCP service returns tool list via `tools/list`
+- **THEN** each tool name SHALL have `mcp_` prefix (e.g., `mcp_query_order`)
+- **AND** the system SHALL maintain alias mapping in `client_factory` to route calls without prefix
+
+#### Scenario: Tool name alias resolution
+- **WHEN** agent calls `execute_tool("query_order", {...})`
+- **THEN** the system SHALL resolve `query_order` to `mcp_query_order` via alias mapping
+- **AND** execute the tool on the MCP service
 
 ### Requirement: Tool registry maps names to implementations
 The system SHALL maintain a `TOOL_REGISTRY` dictionary mapping tool name strings to their Python implementation functions in `erp_app/tools.py`, not in `app/tools.py`. The agent SHALL access tool execution via `app/erp_client.execute_tool()` which delegates to `erp_app/tools.execute_tool()`.
