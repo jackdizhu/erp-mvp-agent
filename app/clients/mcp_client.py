@@ -335,6 +335,14 @@ class MCPClient:
         return self._tools or []
 
     def get_risk_level(self, tool_name: str) -> str:
+        check_name = tool_name
+        if tool_name.startswith("mcp_"):
+            check_name = tool_name[4:]
+        for tool in (self._tools or []):
+            name = tool.get("name", "")
+            if name == tool_name or name == check_name or name == f"mcp_{check_name}":
+                metadata = tool.get("metadata", {})
+                return metadata.get("riskLevel", "SAFE")
         return "SAFE"
 
     def execute_tool(self, name: str, args: dict) -> dict:

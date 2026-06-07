@@ -19,7 +19,7 @@ export function createMessage(role, content, pendingActions = null) {
     pendingActions: pendingActions || [],
     approvalStates: pendingActions
       ? pendingActions.map(pa => ({
-          actionId: pa.id,
+          actionId: pa.action_id,
           status: "pending"
         }))
       : []

@@ -12,7 +12,7 @@ The logging system SHALL create one JSONL file per session, identified by `{date
 
 #### Scenario: New session creates log file
 - **WHEN** a new chat session starts with session_id "abc123" on 2026-05-30
-- **THEN** system creates `log/2026-05-30_abc123.jsonl`
+- **THEN** system creates `logs/2026-05-30_abc123.jsonl`
 - **AND** first line is `session_start` event with timestamp
 
 #### Scenario: Session events are appended

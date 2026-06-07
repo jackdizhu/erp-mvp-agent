@@ -2,7 +2,7 @@
 
 ## Context
 
-当前 `app/agent.py` 的 `chat()` 和 `stream_chat()` 函数缺少调用过程追踪，出现问题只能靠日志盲猜。需求是按会话保存结构化日志到 `log/` 目录，支持调试定位和调用过程分析。
+当前 `app/agent.py` 的 `chat()` 和 `stream_chat()` 函数缺少调用过程追踪，出现问题只能靠日志盲猜。需求是按会话保存结构化日志到 `logs/` 目录，支持调试定位和调用过程分析。
 
 ## Goals / Non-Goals
 
@@ -114,7 +114,7 @@ def _ensure_clean(self):
 
 1. **创建** `app/agent_logger.py`
 2. **修改** `app/agent.py`，在关键节点插入 `self._logger.log_xxx()`
-3. **创建** `log/.gitkeep` 确保目录存在
+3. **创建** `logs/.gitkeep` 确保目录存在
 4. **测试**：模拟 35 个会话，验证自动清理
 
 **Rollback**：删除 `app/agent_logger.py`，回滚 `agent.py` 埋点代码

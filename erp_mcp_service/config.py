@@ -10,4 +10,7 @@ MCP_SERVICE_PORT = int(os.getenv("MCP_SERVICE_PORT", "9001"))
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")
 MCP_RESPONSE_MODE = os.getenv("MCP_RESPONSE_MODE", "auto")
 
+APPROVAL_TTL = int(os.getenv("APPROVAL_TTL", "300"))
+APPROVAL_MAX_PENDING = int(os.getenv("APPROVAL_MAX_PENDING", "10"))
+
 ERP_BASE_PATH = _project_root / "erp_app"

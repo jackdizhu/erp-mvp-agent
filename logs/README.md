@@ -7,7 +7,7 @@ The agent session logging system records structured event logs for each chat ses
 ## Log Directory
 
 ```
-log/
+logs/
 ├── 2026-05-30_abc12345.jsonl
 ├── 2026-05-30_xyz98765.jsonl
 └── 2026-05-29_def45678.jsonl
@@ -84,14 +84,14 @@ POST /chat
 
 ```bash
 # View all events for a session
-cat log/2026-05-30_abc12345.jsonl
+cat logs/2026-05-30_abc12345.jsonl
 
 # Filter by event type
-grep '"type":"tool_call"' log/2026-05-30_abc12345.jsonl
+grep '"type":"tool_call"' logs/2026-05-30_abc12345.jsonl
 
 # Pretty print with jq
-cat log/2026-05-30_abc12345.jsonl | jq
+cat logs/2026-05-30_abc12345.jsonl | jq
 
 # Count events by type
-cat log/2026-05-30_abc12345.jsonl | jq -r '.type' | sort | uniq -c
+cat logs/2026-05-30_abc12345.jsonl | jq -r '.type' | sort | uniq -c
 ```

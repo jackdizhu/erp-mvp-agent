@@ -119,14 +119,14 @@ function MessageBubble({ message, messageIndex, activeSession, updateSessions, s
       )}
 
       {!isUser && message.pendingActions?.map((pa) => {
-        const state = message.approvalStates?.find(s => s.actionId === pa.id);
+        const state = message.approvalStates?.find(s => s.actionId === pa.action_id);
         return (
           <ApprovalCard
-            key={pa.id}
+            key={pa.action_id}
             pendingAction={pa}
             approvalState={state}
-            onConfirm={() => handleConfirm(pa.id, true)}
-            onReject={() => handleConfirm(pa.id, false)}
+            onConfirm={() => handleConfirm(pa.action_id, true)}
+            onReject={() => handleConfirm(pa.action_id, false)}
           />
         );
       })}
@@ -282,7 +282,7 @@ export default function ChatPage() {
           }
           if (data.pending_action) {
             msg.pendingActions = [data.pending_action];
-            msg.approvalStates = [{ actionId: data.pending_action.id, status: "pending" }];
+            msg.approvalStates = [{ actionId: data.pending_action.action_id, status: "pending" }];
           }
           msgs[msgs.length - 1] = msg;
           session.messages = msgs;

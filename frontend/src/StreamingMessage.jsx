@@ -70,14 +70,14 @@ export default function StreamingMessage({ message, messageIndex, activeSession,
       )}
 
       {!isUser && pendingActions.map((pa) => {
-        const state = approvalStates.find(s => s.actionId === pa.id);
+        const state = approvalStates.find(s => s.actionId === pa.action_id);
         return (
           <ApprovalCard
-            key={pa.id}
+            key={pa.action_id}
             pendingAction={pa}
             approvalState={state}
-            onConfirm={() => onConfirm(pa.id, true)}
-            onReject={() => onConfirm(pa.id, false)}
+            onConfirm={() => onConfirm(pa.action_id, true)}
+            onReject={() => onConfirm(pa.action_id, false)}
           />
         );
       })}

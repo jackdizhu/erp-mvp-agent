@@ -41,5 +41,5 @@
 
 ## 4. Documentation
 
-- [x] 4.1 Update `log/README.md` with usage instructions
+- [x] 4.1 Update `logs/README.md` with usage instructions
 - [x] 4.2 Document log file structure and event types

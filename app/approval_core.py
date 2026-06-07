@@ -6,6 +6,18 @@ from app.erp_client import erp_client
 from app.config import APPROVAL_CONFIG
 
 
+OPERATION_TITLES = {
+    "update_order": "修改订单",
+    "cancel_order": "取消订单",
+    "delete_order": "删除订单",
+    "adjust_inventory": "调整库存",
+}
+
+
+def _get_operation_title(tool_name: str) -> str:
+    return OPERATION_TITLES.get(tool_name, tool_name)
+
+
 class ApprovalCore:
     def __init__(self):
         self.pending_actions: dict = {}
@@ -28,16 +40,26 @@ class ApprovalCore:
         risk_level = erp_client.get_risk_level(tool)
         approval_info = erp_client.get_approval_detail(tool, args)
 
+        title = approval_info.get("title") or _get_operation_title(tool)
+        summary = approval_info.get("summary") or ""
+        description = approval_info.get("description") or ""
+        warning = approval_info.get("warning")
+        detail = approval_info.get("detail", {})
+
         pending = {
-            "id": action_id,
+            "status": "PENDING",
+            "action_id": action_id,
             "tool": tool,
             "args": args,
             "messages_context": messages_context,
             "risk_level": risk_level,
-            "summary": approval_info["summary"],
-            "detail": approval_info["detail"],
-            "created_at": time.time(),
+            "title": title,
+            "summary": summary,
+            "description": description,
+            "warning": warning,
+            "detail": detail,
             "expires_at": time.time() + self._ttl_seconds,
+            "ttl_seconds": self._ttl_seconds,
         }
 
         self.pending_actions[action_id] = pending

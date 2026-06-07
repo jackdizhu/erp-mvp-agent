@@ -157,12 +157,12 @@ def _handle_tool_calls(tool_calls, messages: list, logger=None) -> dict:
                 return build_error_response(approval_failed(tool_name))
             pending = action
             if logger:
-                logger.log_approval_pending(action["id"], action["summary"])
+                logger.log_approval_pending(action["action_id"], action["summary"])
             results.append({
                 "tool": tool_name,
                 "args": tool_args,
                 "status": "pending_approval",
-                "action_id": action["id"]
+                "action_id": action["action_id"]
             })
 
     if has_danger and not pending:
@@ -491,12 +491,12 @@ def _handle_tool_calls_stream(tool_calls, messages: list, on_event: Callable[[st
                 return None
             pending = action
             if logger:
-                logger.log_approval_pending(action["id"], action["summary"])
+                logger.log_approval_pending(action["action_id"], action["summary"])
             results.append({
                 "tool": tool_name,
                 "args": tool_args,
                 "status": "pending_approval",
-                "action_id": action["id"]
+                "action_id": action["action_id"]
             })
 
         else:

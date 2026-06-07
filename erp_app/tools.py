@@ -107,6 +107,10 @@ TOOL_SCHEMAS = [
     {
         "name": "update_order",
         "description": "修改订单的指定字段",
+        "riskLevel": "DANGER",
+        "requiresApproval": True,
+        "irreversible": False,
+        "approvalSummary": "修改订单{order_id}的{field}",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -129,6 +133,10 @@ TOOL_SCHEMAS = [
     {
         "name": "cancel_order",
         "description": "取消订单并释放预留库存",
+        "riskLevel": "DANGER",
+        "requiresApproval": True,
+        "irreversible": False,
+        "approvalSummary": "取消订单{order_id}",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -147,6 +155,10 @@ TOOL_SCHEMAS = [
     {
         "name": "delete_order",
         "description": "删除已取消的订单(仅限cancelled状态)",
+        "riskLevel": "DANGER",
+        "requiresApproval": True,
+        "irreversible": True,
+        "approvalSummary": "删除订单{order_id}",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -161,6 +173,10 @@ TOOL_SCHEMAS = [
     {
         "name": "adjust_inventory",
         "description": "调整商品库存数量(正数入库/负数出库)",
+        "riskLevel": "DANGER",
+        "requiresApproval": True,
+        "irreversible": False,
+        "approvalSummary": "调整{sku}库存{delta}",
         "inputSchema": {
             "type": "object",
             "properties": {

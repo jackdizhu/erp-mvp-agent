@@ -17,6 +17,7 @@ from config import MCP_SERVICE_PORT, MCP_API_KEY, MCP_RESPONSE_MODE
 from tools import list_tools, call_tool, get_task_support
 from task_manager import task_manager
 from session_manager import session_manager
+from approval_manager import approval_manager
 from erp_app.db import init_db as init_erp_db
 from erp_app.seed import seed_data
 
@@ -57,6 +58,7 @@ def _log_json(entry: dict) -> None:
 def on_startup():
     init_erp_db()
     seed_data()
+    approval_manager.cleanup()
 
 
 @app.get("/health")

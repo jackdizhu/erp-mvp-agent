@@ -9,7 +9,7 @@ class SessionLogger:
     MAX_FILES = 30
     MAX_DAYS = 7
 
-    def __init__(self, session_id: str, log_dir: str = "log"):
+    def __init__(self, session_id: str, log_dir: str = "logs"):
         self.session_id = session_id
         self.log_dir = Path(log_dir)
         self._start_time = datetime.now()

@@ -109,12 +109,18 @@ class ToolCallResult(BaseModel):
 
 
 class PendingAction(BaseModel):
-    id: str
+    status: str = "PENDING"
+    action_id: str
     tool: str
     args: dict
     risk_level: str
+    title: str
     summary: str
+    description: str
+    warning: Optional[str] = None
     detail: dict
+    expires_at: float
+    ttl_seconds: int
 
 
 class ErrorInfo(BaseModel):

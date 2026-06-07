@@ -3,6 +3,18 @@ from erp_app.config import TOOL_RISK_LEVELS, ACTION_SUMMARIES
 from erp_app.approval_detail import generate_approval_detail
 
 
+OPERATION_TITLES = {
+    "update_order": "修改订单",
+    "cancel_order": "取消订单",
+    "delete_order": "删除订单",
+    "adjust_inventory": "调整库存",
+}
+
+
+def _get_operation_title(tool_name: str) -> str:
+    return OPERATION_TITLES.get(tool_name, tool_name)
+
+
 class ErpClient:
     def get_tools(self) -> list:
         return TOOL_SCHEMAS
@@ -19,10 +31,20 @@ class ErpClient:
             summary = summary_template.format(**args, tool=tool_name)
         except KeyError:
             summary = summary_template
+
         detail = generate_approval_detail(tool_name, args)
+
         return {
+            "title": detail.get("title") or _get_operation_title(tool_name),
             "summary": summary,
-            "detail": detail
+            "description": detail.get("description") or "",
+            "warning": detail.get("warning"),
+            "detail": {
+                "action_type": detail.get("action_type", tool_name),
+                "fields": detail.get("fields", []),
+                "changes": detail.get("changes", []),
+                "irreversible": detail.get("irreversible", False)
+            }
         }
 
 
