@@ -19,6 +19,39 @@ export async function chatConfirm(sessionId, actionId, approved, history) {
   return res.json();
 }
 
+export async function chatConfirmWithUserOp(sessionId, actionId, approved, history, userOpId) {
+  const res = await fetch(`${API_BASE}/chat/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      action_id: actionId,
+      approved,
+      history,
+      user_op_id: userOpId
+    })
+  });
+  return res.json();
+}
+
+export async function approvalCreate(actionId, tool, args, sessionId) {
+  const res = await fetch(`${API_BASE}/api/approval/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action_id: actionId, tool, args, session_id: sessionId })
+  });
+  return res.json();
+}
+
+export async function approvalDecide(actionId, approved, sessionId) {
+  const res = await fetch(`${API_BASE}/api/approval/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action_id: actionId, approved, session_id: sessionId })
+  });
+  return res.json();
+}
+
 export async function chatStream(sessionId, message, history, signal) {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",

@@ -120,3 +120,16 @@ def detect_tool_intent(message: str) -> Optional[str]:
                 return tool_name
 
     return None
+
+
+def check_approval_status(action_id: str) -> Optional[dict]:
+    """检查审批状态，返回 user_op_id 和 approved 如果已决定"""
+    from app.approval_store import approval_store
+    record = approval_store.get(action_id)
+    if record and record.user_op_id:
+        return {
+            "user_op_id": record.user_op_id,
+            "approved": record.approved,
+            "action_id": action_id
+        }
+    return None

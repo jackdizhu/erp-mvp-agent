@@ -82,6 +82,7 @@ class ClientFactory:
 
 
 _client_factory = ClientFactory()
+client_factory = _client_factory  # 公开别名，供 agent.py 等模块直接引用实例
 
 
 def get_client_factory() -> ClientFactory:

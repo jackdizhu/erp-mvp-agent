@@ -15,16 +15,20 @@ const STATUS_LABELS = {
   success: "执行成功",
   failed: "执行失败",
   rejected: "已取消",
-  expired: "已过期"
+  expired: "已过期",
+  unsupported: "不支持"
 };
 
-function ApprovalCard({ pendingAction, approvalState, onConfirm, onReject }) {
+function ApprovalCard({ pendingAction, approvalState, onConfirm, onReject, approvalMeta }) {
   const [actionLoading, setActionLoading] = useState(null);
   const status = approvalState?.status || "pending";
-  const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
   const detail = pendingAction.detail || {};
-  const fields = detail.fields || [];
+  const fields = (approvalMeta?.fields || detail.fields || []);
+  const supported = approvalMeta?.supported !== false;
+  const displayStatus = supported ? status : "unsupported";
+  const style = STATUS_STYLES[displayStatus] || STATUS_STYLES.pending;
   const isPending = status === "pending";
+  const isInteractive = isPending && supported;
 
   const handleConfirm = () => {
     if (actionLoading) return;
@@ -42,7 +46,9 @@ function ApprovalCard({ pendingAction, approvalState, onConfirm, onReject }) {
     <div className="approval-card" style={{ border: style.border, background: style.bg }}>
       <div className="approval-header">
         <span className="risk-badge danger">🔴 高风险</span>
-        <span className="approval-status">{STATUS_LABELS[status]}</span>
+        <span className="approval-status">
+          {!supported ? `不支持: ${approvalMeta?.reason || ""}` : STATUS_LABELS[status]}
+        </span>
       </div>
 
       <div className="approval-fields">
@@ -54,7 +60,7 @@ function ApprovalCard({ pendingAction, approvalState, onConfirm, onReject }) {
         ))}
       </div>
 
-      {detail.irreversible && isPending && (
+      {detail.irreversible && isInteractive && (
         <div className="irreversible-warning">⚠️ 此操作不可撤销</div>
       )}
 
@@ -70,7 +76,7 @@ function ApprovalCard({ pendingAction, approvalState, onConfirm, onReject }) {
         </div>
       )}
 
-      {isPending && (
+      {isInteractive && (
         <div className="approval-actions">
           <button
             className="confirm-btn"

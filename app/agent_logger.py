@@ -1,5 +1,6 @@
 import json
 import traceback
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Any
@@ -8,12 +9,19 @@ from typing import Optional, Any
 class SessionLogger:
     MAX_FILES = 30
     MAX_DAYS = 7
+    STREAM_BUFFER_SIZE = 30  # 累积 30 字符后写入
+    STREAM_FLUSH_INTERVAL = 0.1  # 100ms 超时写入
 
     def __init__(self, session_id: str, log_dir: str = "logs"):
         self.session_id = session_id
         self.log_dir = Path(log_dir)
         self._start_time = datetime.now()
         self._ensure_clean()
+        # 流式日志缓冲区
+        self._stream_buffer = ""
+        self._stream_last_write = datetime.now()
+        self._stream_timer = None
+        self._stream_lock = threading.Lock()
 
     def _ensure_clean(self):
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +125,42 @@ class SessionLogger:
         })
 
     def log_stream_chunk(self, content: str):
-        self._write("stream_chunk", {
-            "content": content,
-            "length": len(content)
-        })
+        """流式日志：使用缓冲区批量写入，减少日志碎片化"""
+        with self._stream_lock:
+            self._stream_buffer += content
+            now = datetime.now()
+
+            # 取消待执行的定时器
+            if self._stream_timer:
+                self._stream_timer.cancel()
+                self._stream_timer = None
+
+            # 缓冲区达到阈值，立即写入
+            if len(self._stream_buffer) >= self.STREAM_BUFFER_SIZE:
+                self._flush_stream_buffer()
+            else:
+                # 设置定时器，超时后写入
+                elapsed = (now - self._stream_last_write).total_seconds()
+                if elapsed >= self.STREAM_FLUSH_INTERVAL:
+                    self._flush_stream_buffer()
+                else:
+                    # 延迟写入
+                    delay = self.STREAM_FLUSH_INTERVAL - elapsed
+                    self._stream_timer = threading.Timer(delay, self._delayed_flush)
+                    self._stream_timer.daemon = True
+                    self._stream_timer.start()
+
+    def _flush_stream_buffer(self):
+        """立即刷新缓冲区"""
+        if self._stream_buffer:
+            self._write("stream_chunk", {
+                "content": self._stream_buffer,
+                "length": len(self._stream_buffer)
+            })
+            self._stream_buffer = ""
+            self._stream_last_write = datetime.now()
+
+    def _delayed_flush(self):
+        """定时器回调：延迟刷新"""
+        with self._stream_lock:
+            self._flush_stream_buffer()

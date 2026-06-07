@@ -5,7 +5,7 @@ from typing import Callable, Optional
 from datetime import datetime
 
 from app.llm import call_llm, call_llm_stream, SYSTEM_PROMPT
-from app.clients import client_factory
+from app.clients.client_factory import client_factory
 from app.config import HISTORY_WINDOW
 from app.approval_core import approval_core
 from app.intent_detector import detect_tool_intent
@@ -251,8 +251,8 @@ def _generate_reply_from_results(results: list, messages: list, logger=None) -> 
     }
 
 
-def confirm_action(action_id: str, approved: bool, history: list, logger=None) -> dict:
-    result = approval_core.confirm(action_id, approved)
+def confirm_action(action_id: str, approved: bool, history: list, user_op_id: str = None, logger=None) -> dict:
+    result = approval_core.confirm(action_id, approved, user_op_id)
 
     if logger:
         logger.log_approval_result(action_id, approved)
@@ -275,12 +275,26 @@ def confirm_action(action_id: str, approved: bool, history: list, logger=None) -
 
     action = result["action"]
     messages = action["messages_context"]
+    tool_name = action["tool"]
+    tool_args = action["args"]
 
     try:
-        exec_result = client_factory.execute_tool(action["tool"], action["args"])
+        # 路由模式判断：MCP 工具走 preapproved 路径，ERP 工具走 client_factory
+        mcp_alias = client_factory._mcp_tool_alias.get(tool_name)
+        if mcp_alias:
+            mcp_client = client_factory.get_client_for_tool(mcp_alias)
+            if mcp_client and hasattr(mcp_client, "execute_tool_preapproved"):
+                exec_result = mcp_client.execute_tool_preapproved(
+                    tool_name, tool_args, user_op_id=user_op_id
+                )
+            else:
+                exec_result = client_factory.execute_tool(tool_name, tool_args)
+        else:
+            exec_result = client_factory.execute_tool(tool_name, tool_args)
+
         tool_call_record = {
-            "tool": action["tool"],
-            "args": action["args"],
+            "tool": tool_name,
+            "args": tool_args,
             "result": exec_result
         }
     except ValueError as e:

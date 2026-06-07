@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.erp_client import erp_client
 from app.config import APPROVAL_CONFIG
+from app.approval_store import approval_store
 
 
 OPERATION_TITLES = {
@@ -63,9 +64,13 @@ class ApprovalCore:
         }
 
         self.pending_actions[action_id] = pending
+
+        # 同步注册到 approval_store 供两阶段审批使用
+        approval_store.create(action_id, tool, args, detail)
+
         return pending
 
-    def confirm(self, action_id: str, approved: bool) -> Optional[dict]:
+    def confirm(self, action_id: str, approved: bool, user_op_id: str = None) -> Optional[dict]:
         action = self.pending_actions.get(action_id)
         if not action:
             return None
@@ -76,11 +81,14 @@ class ApprovalCore:
 
         if approved:
             result = action
+            result["user_op_id"] = user_op_id
             del self.pending_actions[action_id]
             return {"approved": True, "action": result}
         else:
+            result = action
+            result["user_op_id"] = user_op_id
             del self.pending_actions[action_id]
-            return {"approved": False}
+            return {"approved": False, "action": result}
 
     def cleanup_expired(self) -> int:
         expired_ids = [

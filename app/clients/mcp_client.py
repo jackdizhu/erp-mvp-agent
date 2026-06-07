@@ -280,7 +280,7 @@ class MCPClient:
 
         return tools
 
-    def call_tool(self, tool_name: str, arguments: dict) -> dict:
+    def call_tool(self, tool_name: str, arguments: dict, params: dict = None) -> dict:
         self._ensure_initialized()
 
         request_id = str(uuid.uuid4())
@@ -293,6 +293,9 @@ class MCPClient:
                 "arguments": arguments
             }
         }
+
+        if params:
+            payload["params"].update(params)
 
         start_time = time.perf_counter()
         result = self._request("POST", "/mcp", payload)
@@ -347,6 +350,15 @@ class MCPClient:
 
     def execute_tool(self, name: str, args: dict) -> dict:
         return self.call_tool(name, args)
+
+    def execute_tool_preapproved(self, name: str, args: dict, user_op_id: str = None) -> dict:
+        """已审批的执行：调用 MCP 服务传入 preapproved 标志，跳过 MCP 内部审批"""
+        return self.call_tool(name, args, params={
+            "_meta": {
+                "preapproved": True,
+                "user_op_id": user_op_id
+            }
+        })
 
     def get_approval_detail(self, tool_name: str, args: dict) -> dict:
         return {

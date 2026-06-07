@@ -4,7 +4,7 @@ import ApprovalCard from './ApprovalCard';
 import StreamingMessage from './StreamingMessage';
 import McpErrorNotification from './McpErrorNotification';
 import { useStreamingChat } from './useStreamingChat';
-import { chatPost, chatConfirm } from './httpUtils';
+import { chatPost, chatConfirmWithUserOp, approvalDecide } from './httpUtils';
 
 const MCP_ERROR_MESSAGES = {
   MCP_SERVICE_UNAVAILABLE: { msg: "ERP服务暂时不可用，请稍后重试", recoverable: true },
@@ -58,8 +58,17 @@ function MessageBubble({ message, messageIndex, activeSession, updateSessions, s
   const handleConfirm = async (actionId, approved) => {
     setLoading(true);
     try {
+      // 阶段1: 调用 approveDecide 创建用户审批操作ID
+      const decideResult = await approvalDecide(actionId, approved, activeSession.id);
+      if (!decideResult.user_op_id) {
+        throw new Error(decideResult.error || "审批决定失败");
+      }
+
+      // 阶段2: 携带 user_op_id 调用 /chat/confirm
       const history = truncateHistory(activeSession.messages);
-      const data = await chatConfirm(activeSession.id, actionId, approved, history);
+      const data = await chatConfirmWithUserOp(
+        activeSession.id, actionId, approved, history, decideResult.user_op_id
+      );
 
       updateSessions(prev => {
         const session = prev.find(s => s.id === activeSession.id);
@@ -413,8 +422,17 @@ export default function ChatPage() {
               onConfirm={async (actionId, approved) => {
                 setLoading(true);
                 try {
+                  // 阶段1: 调用 approveDecide 创建用户审批操作ID
+                  const decideResult = await approvalDecide(actionId, approved, activeSession.id);
+                  if (!decideResult.user_op_id) {
+                    throw new Error(decideResult.error || "审批决定失败");
+                  }
+
+                  // 阶段2: 携带 user_op_id 调用 /chat/confirm
                   const history = truncateHistory(activeSession.messages);
-                  const data = await chatConfirm(activeSession.id, actionId, approved, history);
+                  const data = await chatConfirmWithUserOp(
+                    activeSession.id, actionId, approved, history, decideResult.user_op_id
+                  );
 
                   updateSessions(prev => {
                     const session = prev.find(s => s.id === activeSession.id);

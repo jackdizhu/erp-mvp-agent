@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -15,6 +15,11 @@ from app.agent_logger import SessionLogger
 from app.clients.client_factory import register_erp_adapter
 from app.clients.mcp_registry import reload_registry, init_registry
 from app.config import CLIENT_BACKEND, ENABLE_LOCAL_ADAPTER, MCP_SERVICE_URL
+from app.models import (
+    ApprovalCreateRequest, ApprovalCreateResponse,
+    ApprovalDecideRequest, ApprovalDecideResponse
+)
+from app.approval_store import approval_store
 from erp_app.main import router as erp_router
 from erp_app.db import init_db as init_erp_db
 from erp_app.seed import seed_data
@@ -97,6 +102,7 @@ class ConfirmRequest(BaseModel):
     approved: bool
     history: list[HistoryMessage] = []
     session_id: Optional[str] = None
+    user_op_id: Optional[str] = None
 
 
 class ToolCallResult(BaseModel):
@@ -153,7 +159,7 @@ async def confirm_endpoint(req: ConfirmRequest):
 
     logger = SessionLogger(session_id)
 
-    result = confirm_action(req.action_id, req.approved, history, logger)
+    result = confirm_action(req.action_id, req.approved, history, req.user_op_id, logger)
     return ChatResponse(**result)
 
 
@@ -239,6 +245,42 @@ async def mcp_debug():
         "enable_local_adapter": ENABLE_LOCAL_ADAPTER,
         "mcp_service_url": MCP_SERVICE_URL
     }
+
+
+@app.post("/api/approval/create", response_model=ApprovalCreateResponse)
+async def approval_create(req: ApprovalCreateRequest):
+    """前端收到审批信息后，创建审批记录并验证"""
+    supported, reason = approval_store.validate(req.action_id)
+    if not supported:
+        return ApprovalCreateResponse(
+            supported=False,
+            action_id=req.action_id,
+            reason=reason
+        )
+
+    record = approval_store.get(req.action_id)
+    detail = record.detail if record else {}
+    return ApprovalCreateResponse(
+        supported=True,
+        action_id=req.action_id,
+        fields=detail.get("fields", []),
+        irreversible=detail.get("irreversible", False),
+        warning=detail.get("warning")
+    )
+
+
+@app.post("/api/approval/decide", response_model=ApprovalDecideResponse)
+async def approval_decide(req: ApprovalDecideRequest):
+    """用户点击同意/不同意，创建用户审批操作ID"""
+    success, user_op_id, error = approval_store.decide(req.action_id, req.approved)
+    if not success:
+        raise HTTPException(status_code=400, detail=error)
+    return ApprovalDecideResponse(
+        user_op_id=user_op_id,
+        action_id=req.action_id,
+        approved=req.approved,
+        status="approved" if req.approved else "rejected"
+    )
 
 
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "9000"))
