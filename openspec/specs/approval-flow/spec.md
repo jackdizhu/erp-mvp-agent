@@ -69,6 +69,87 @@ The system SHALL generate a detail object for each pending action by calling `er
 - **WHEN** pending action for adjust_inventory(sku="iPhone-15", delta=-20) is created
 - **THEN** erp_app queries SQLite for current qty, returns fields with current_qty, delta, and new_qty
 
+### Requirement: Enhanced approval detail structure
+The system SHALL return approval_detail with additional fields for front-end card rendering: title, action_summary, description, warning, changes array, and risk_level.
+
+#### Scenario: Update order enhanced detail
+- **WHEN** update_order(order_id="ORD-001", field="address", value="北京") is called
+- **THEN** approval_detail contains:
+  - action_type: "update_order"
+  - risk_level: "DANGER"
+  - title: "修改订单"
+  - action_summary: "修改订单 ORD-001 的 address 为 北京"
+  - description: "将订单 ORD-001 的地址从'旧地址'修改为'北京'"
+  - warning: null
+  - changes: [{field: "address", label: "地址", old: "旧地址", new: "北京"}]
+  - irreversible: false
+
+#### Scenario: Delete order with warning
+- **WHEN** delete_order(order_id="ORD-002") is called
+- **THEN** approval_detail contains:
+  - warning: "⚠️ 此操作不可逆，删除后将无法恢复"
+  - irreversible: true
+
+### Requirement: Template-based summary generation
+The system SHALL fill `approvalSummary` template placeholders with actual argument values when generating action_summary.
+
+#### Scenario: Template with placeholders
+- **WHEN** template is "修改订单{order_id}的{field}"
+- **AND** args are {"order_id": "ORD-001", "field": "address"}
+- **THEN** action_summary is "修改订单 ORD-001 的 address"
+
+#### Scenario: Missing template fallback
+- **WHEN** approvalSummary is empty
+- **AND** tool_name is "delete_order"
+- **AND** order_id is "ORD-003"
+- **THEN** action_summary is "删除订单 ORD-003"
+
+### Requirement: Unified pending action response format
+The system SHALL return pending action with standardized field names and types for all approval flows.
+
+#### Scenario: Valid pending action format
+- **WHEN** pending action is created
+- **THEN** response contains:
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | status | string | Yes | Always "PENDING" |
+  | action_id | string | Yes | Format: act_[8 hex] |
+  | tool | string | Yes | Tool name |
+  | args | object | Yes | Tool arguments |
+  | risk_level | string | Yes | SAFE/WARNING/DANGER |
+  | title | string | Yes | Operation title |
+  | summary | string | Yes | Filled template |
+  | description | string | Yes | Change description |
+  | warning | string\|null | Yes | Warning message |
+  | detail | object | Yes | ApprovalDetail |
+  | expires_at | number | Yes | Unix timestamp (float) |
+  | ttl_seconds | number | Yes | Seconds until expiry |
+
+### Requirement: Approval detail changes array
+The system SHALL generate a changes array showing field-level modifications with label, old, and new values.
+
+#### Scenario: Inventory adjustment changes
+- **WHEN** adjust_inventory(sku="SKU-001", delta=-20) is called
+- **AND** current quantity is 100
+- **THEN** changes contains:
+  - {field: "qty", label: "当前库存", old: "100", new: "-"}
+  - {field: "delta", label: "调整数量", old: "-", new: "-20"}
+  - {field: "qty", label: "调整后库存", old: "-", new: "80"}
+
+### Requirement: Pending action validation
+The system SHALL provide validate_pending_action() function that returns (valid, error_message) tuple.
+
+#### Scenario: Valid action validation
+- **WHEN** validate_pending_action(action) is called
+- **AND** action has all required fields
+- **AND** all values are correct type
+- **THEN** returns (true, null)
+
+#### Scenario: Invalid action validation
+- **WHEN** validate_pending_action(action) is called
+- **AND** action is missing "title" field
+- **THEN** returns (false, "Missing required field: title")
+
 ### Requirement: Expired actions cleanup
 The system SHALL clean up expired pending actions on each new request to prevent memory leaks, with max_pending=10 limit.
 
