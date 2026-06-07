@@ -107,3 +107,127 @@ The MCP Service SHALL implement POST /mcp endpoint for MCP protocol messages.
 - **GIVEN** POST /mcp is called with notifications/initialized method
 - **WHEN** the server processes the notification
 - **THEN** the server SHALL return 202 Accepted
+
+### Requirement: Tool Schema Metadata Extension
+The system SHALL extend tool schemas with risk metadata fields for approval flow integration.
+
+#### Scenario: DANGER tool with metadata
+- **WHEN** tools/list is called
+- **THEN** each tool includes metadata block:
+  ```json
+  {
+    "name": "mcp_update_order",
+    "metadata": {
+      "riskLevel": "DANGER",
+      "requiresApproval": true,
+      "irreversible": false,
+      "approvalSummary": "修改订单{order_id}的{field}"
+    }
+  }
+  ```
+
+#### Scenario: Tool risk levels
+| Tool | riskLevel | requiresApproval | irreversible |
+|------|-----------|------------------|--------------|
+| query_* | SAFE | false | false |
+| create_order | WARNING | false | false |
+| update_order | DANGER | true | false |
+| cancel_order | DANGER | true | false |
+| delete_order | DANGER | true | true |
+| adjust_inventory | DANGER | true | false |
+
+### Requirement: Approval Interception for High-Risk Tools
+The system SHALL intercept tool calls that require approval and return pending status instead of executing.
+
+#### Scenario: DANGER tool returns pending
+- **WHEN** `tools/call` is invoked with `mcp_update_order(order_id="ORD-001", field="address", value="北京")`
+- **AND** tool has `requiresApproval: true`
+- **THEN** system returns:
+  ```json
+  {
+    "status": "PENDING",
+    "action_id": "act_<12 hex chars>",
+    "tool": "update_order",
+    "args": {"order_id": "ORD-001", "field": "address", "value": "北京"},
+    "risk_level": "DANGER",
+    "title": "修改订单",
+    "summary": "修改订单 ORD-001 的 address",
+    "description": "将订单 ORD-001 的地址从'旧地址'修改为'北京'",
+    "warning": null,
+    "detail": {...},
+    "expires_at": 1717200000.0,
+    "ttl_seconds": 300
+  }
+  ```
+
+### Requirement: mcp_confirm_approval Tool
+The system SHALL provide mcp_confirm_approval tool for confirming or rejecting pending actions.
+
+#### Scenario: Confirm pending action
+- **WHEN** `mcp_confirm_approval(action_id="act_abc123", approved=true)` is called
+- **AND** action status is "pending"
+- **AND** action is not expired
+- **THEN** execute original tool, return:
+  ```json
+  {
+    "success": true,
+    "action_id": "act_abc123",
+    "executed": true,
+    "result": {"success": true, "data": {...}}
+  }
+  ```
+
+#### Scenario: Reject pending action
+- **WHEN** `mcp_confirm_approval(action_id="act_abc123", approved=false)` is called
+- **THEN** mark action as rejected, return:
+  ```json
+  {
+    "success": true,
+    "action_id": "act_abc123",
+    "executed": false,
+    "message": "操作已取消"
+  }
+  ```
+
+#### Scenario: Expired action confirmation
+- **WHEN** confirm is called for expired action
+- **THEN** return:
+  ```json
+  {
+    "success": false,
+    "error": "APPROVAL_EXPIRED",
+    "message": "审批已过期，请重新发起操作"
+  }
+  ```
+
+### Requirement: ApprovalManager for Pending Actions
+The system SHALL implement ApprovalManager class to manage pending action lifecycle.
+
+#### Scenario: Create pending action
+- **WHEN** ApprovalManager.create() is called with tool_name, arguments, risk_level, approval_detail, ttl
+- **THEN** returns PendingAction with unique action_id and "pending" status
+
+#### Scenario: Concurrent pending actions
+- **WHEN** multiple DANGER tools are called in sequence
+- **THEN** each creates independent pending action with unique action_id
+
+### Requirement: Approval Configuration
+The system SHALL support configurable TTL and max pending actions.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| APPROVAL_TTL | 300 | Seconds until pending action expires |
+| APPROVAL_MAX_PENDING | 10 | Maximum concurrent pending actions |
+
+### Requirement: Approval Error Codes
+The system SHALL return specific error codes for approval operations.
+
+| Code | Meaning |
+|------|---------|
+| ACTION_NOT_FOUND | action_id does not exist |
+| ACTION_ALREADY_PENDING | Action already in pending state |
+| ACTION_ALREADY_APPROVED | Action already approved |
+| ACTION_ALREADY_REJECTED | Action already rejected |
+| APPROVAL_EXPIRED | Action TTL exceeded |
+| MAX_PENDING_EXCEEDED | Too many pending actions |
+| MISSING_ACTION_ID | action_id parameter missing |
