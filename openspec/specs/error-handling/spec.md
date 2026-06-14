@@ -102,3 +102,72 @@ The system SHALL mark errors as recoverable=true when the user can potentially r
 #### Scenario: Non-recoverable error
 - **WHEN** SYS_ERROR occurs
 - **THEN** recoverable=false, user should contact support
+
+### Requirement: Skill layer error code
+The system SHALL define error code `SKILL_EXECUTION_FAILED` with `source="skill"` and `recoverable=true`, used when a matched skill's executor returns `WorkflowResult(success=False)` or raises an exception.
+
+#### Scenario: Handler exception caught
+- **WHEN** SkillHandler.execute() raises an exception during skill execution
+- **THEN** agent returns AgentError with code="SKILL_EXECUTION_FAILED", message includes skill name and error detail, source="skill", recoverable=true
+
+#### Scenario: YAML workflow step failure
+- **WHEN** a tool_call step in YAML workflow fails (client_factory.execute_tool raises)
+- **THEN** agent returns AgentError with code="SKILL_EXECUTION_FAILED", message="技能 'xxx' 执行失败：步骤 'X' 执行失败: <reason>", source="skill", recoverable=true
+
+#### Scenario: User-facing message
+- **WHEN** SKILL_EXECUTION_FAILED is returned to the frontend
+- **THEN** the `reply` field contains a user-friendly Chinese message such as "技能 query-order-search 执行失败：xxx，请稍后重试或换种方式描述"
+- **AND** the `error` object contains `{code: "SKILL_EXECUTION_FAILED", recoverable: true}`
+
+#### Scenario: Non-fallback semantics
+- **WHEN** SKILL_EXECUTION_FAILED is returned
+- **THEN** the agent does NOT retry the LLM call, does NOT call detect_tool_intent, does NOT create a pending action
+- **AND** the error is the terminal response for the current chat request
+
+### Requirement: Skill error message format
+The system SHALL format the SKILL_EXECUTION_FAILED message as: `"技能 <skill_name> 执行失败：<error_detail>"` where `<skill_name>` is the matched skill's name and `<error_detail>` is from `WorkflowResult.error` or the exception's string representation.
+
+#### Scenario: Message includes skill name
+- **WHEN** matched skill is "query-order-edit-address" and handler fails with "无法识别订单号"
+- **THEN** AgentError.message = "技能 query-order-edit-address 执行失败：无法识别订单号"
+
+#### Scenario: Message truncation for long errors
+- **WHEN** WorkflowResult.error is longer than 200 chars
+- **THEN** AgentError.message truncates the error_detail to 200 chars + "..."
+
+### Requirement: SKILL_EXECUTION_FAILED frontend rendering
+The system SHALL render `SKILL_EXECUTION_FAILED` errors in the chat interface via the red `error-message-banner` style, with the skill name, error code, and user-friendly message.
+
+#### Scenario: Error in API response
+- **WHEN** `/chat` returns error `{code: "SKILL_EXECUTION_FAILED", message: "技能 query-order-search 执行失败：xxx", recoverable: true}`
+- **THEN** chat response includes `reply: "技能 query-order-search 执行失败：xxx"` and `error: {code: "SKILL_EXECUTION_FAILED", recoverable: true}`
+
+#### Scenario: Error in SSE stream
+- **WHEN** `/chat/stream` emits `event: done` with `error: {code: "SKILL_EXECUTION_FAILED", message: "...", recoverable: true}`
+- **THEN** frontend shows red error banner: "技能 query-order-search 执行失败：xxx" with "可重试或换种方式描述" hint
+
+#### Scenario: Distinct from tool error
+- **WHEN** chat response has BOTH a failed tool (TOOL_NOT_FOUND) and a failed skill (SKILL_EXECUTION_FAILED)
+- **THEN** tool error appears as inline text in tool card; skill error appears as full-width banner (mutually exclusive display paths)
+
+### Requirement: Recoverability hint for skill errors
+The frontend SHALL display a "可重试" hint for recoverable Skill errors and a "需联系管理员" hint for non-recoverable ones.
+
+#### Scenario: Recoverable=true
+- **WHEN** error.recoverable=true (default for SKILL_EXECUTION_FAILED)
+- **THEN** banner message ends with "（可重试或换种方式描述）"
+
+#### Scenario: Non-recoverable
+- **WHEN** error.recoverable=false (e.g., APPROVAL_FAILED)
+- **THEN** banner message ends with "（需联系管理员）"
+
+### Requirement: Skill error code visibility
+The frontend SHALL display the error code in parentheses after the main error message for technical debugging.
+
+#### Scenario: Code shown
+- **WHEN** error.code = "SKILL_EXECUTION_FAILED"
+- **THEN** banner message shows: "技能 query-order-search 执行失败：xxx（错误码：SKILL_EXECUTION_FAILED）"
+
+#### Scenario: Code truncation
+- **WHEN** error.message is longer than 100 characters
+- **THEN** main message is truncated to 100 chars + "..."; error code is shown in full after

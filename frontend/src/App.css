@@ -421,3 +421,222 @@
 .error-text {
   font-weight: 500;
 }
+
+/* ============ Skill Observability Styles (add-skill-observability) ============ */
+
+.skill-card {
+  border: 1px solid #c4b5fd;
+  border-radius: 6px;
+  margin: 8px 0;
+  background: #faf5ff;
+  font-size: 13px;
+}
+
+.skill-card-header {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.skill-card-header:hover {
+  background: #f3e8ff;
+}
+
+.skill-card-icon {
+  font-size: 16px;
+}
+
+.skill-card-title {
+  font-weight: 600;
+  font-family: monospace;
+  color: #5b21b6;
+}
+
+.skill-category-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.skill-progress-text {
+  font-size: 11px;
+  color: #6b7280;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.skill-card-body {
+  padding: 8px 12px;
+  border-top: 1px solid #e9d5ff;
+}
+
+.skill-description {
+  font-size: 12px;
+  color: #4b5563;
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.skill-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.skill-tool-chip {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 3px;
+  color: #4b5563;
+}
+
+.skill-step-list {
+  padding: 4px 0;
+}
+
+.skill-step-row {
+  padding: 4px 0;
+  border-bottom: 1px dashed #e9d5ff;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.skill-step-row.failed {
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+
+.skill-step-id {
+  font-weight: 600;
+  font-family: monospace;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.skill-step-type {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.skill-step-type-tool_call {
+  background: #ddd6fe;
+}
+
+.skill-step-type-prompt {
+  background: #cffafe;
+  color: #0e7490;
+}
+
+.skill-step-tool {
+  font-family: monospace;
+  font-size: 11px;
+  color: #4b5563;
+}
+
+.skill-step-status {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: white;
+}
+
+.skill-step-elapsed {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-left: auto;
+}
+
+.skill-step-result {
+  font-size: 11px;
+  color: #6b7280;
+  font-style: italic;
+  width: 100%;
+  margin-top: 2px;
+  margin-left: 8px;
+}
+
+.skill-empty-steps {
+  font-size: 11px;
+  color: #9ca3af;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.skill-correlation-id {
+  font-size: 10px;
+  color: #9ca3af;
+  font-family: monospace;
+  padding: 4px 12px;
+  border-top: 1px solid #e9d5ff;
+  margin-top: 8px;
+}
+
+.skill-info-banner {
+  background: linear-gradient(135deg, #ede9fe 0%, #f3e8ff 100%);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-bottom: 1px solid #c4b5fd;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.skill-info-banner:hover {
+  background: linear-gradient(135deg, #ddd6fe 0%, #ede9fe 100%);
+}
+
+.skill-info-icon {
+  font-size: 16px;
+}
+
+.skill-info-text {
+  font-weight: 600;
+  color: #5b21b6;
+}
+
+.skill-tool-chip-more {
+  font-size: 11px;
+  color: #6b7280;
+  padding: 2px 4px;
+}
+
+.skill-need-more-info-banner {
+  background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-bottom: 1px solid #93c5fd;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.skill-need-more-info-icon {
+  font-size: 18px;
+}
+
+.expand-arrow {
+  font-size: 11px;
+  color: #6b7280;
+}

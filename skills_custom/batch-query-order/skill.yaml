@@ -1,0 +1,38 @@
+name: batch-query-order
+version: "1.0"
+description: "批量查询订单状态"
+category: custom
+
+intent_patterns:
+  zh:
+    - "批量.*查询.*订单"
+    - "多个.*订单.*状态"
+    - "几个.*订单"
+  en:
+    - "batch.*query.*order"
+    - "multiple.*order.*status"
+
+tools:
+  - query_order
+
+prompt_fragment: |
+  批量查询时请逐个查询并汇总为表格
+
+# YAML workflow (custom skill — no Python handler, executor runs steps directly)
+workflow:
+  steps:
+    - id: parse_input
+      type: prompt
+      instruction: "从用户消息中提取所有订单号，返回 JSON 数组"
+
+    - id: batch_query
+      type: tool_call
+      tool: query_order
+      params:
+        order_id: "{{parse_input.items[*].order_id}}"
+      iterate: true
+      output: order_results
+
+    - id: summarize
+      type: prompt
+      instruction: "将查询结果整理为表格，包含订单号、状态、收货地址、预计送达时间"

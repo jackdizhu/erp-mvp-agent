@@ -1,0 +1,3 @@
+# Custom skills directory
+# Each subdirectory contains one custom skill with skill.yaml only (no handler.py)
+# Created at runtime via POST /api/skills/create

@@ -112,6 +112,113 @@ class SessionLogger:
             "approved": approved
         })
 
+    # ---------- Skill observability events (decision D7) ----------
+
+    @staticmethod
+    def _truncate(text: str, max_len: int = 200) -> str:
+        """Truncate text to max_len chars + '...' if longer. Used for non-prompt_fragment fields."""
+        if text is None:
+            return ""
+        return text[:max_len] + "..." if len(text) > max_len else text
+
+    def log_skill_matched(
+        self,
+        skill_name: str,
+        category: str,
+        has_workflow: bool,
+        has_handler: bool,
+        correlation_id: str,
+        prompt_fragment: str,
+    ) -> None:
+        """Record skill match event. prompt_fragment is NOT truncated (decision D7)."""
+        self._write("skill_matched", {
+            "skill_name": skill_name,
+            "category": category,
+            "has_workflow": has_workflow,
+            "has_handler": has_handler,
+            "correlation_id": correlation_id,
+            "prompt_fragment": prompt_fragment or "",
+        })
+
+    def log_workflow_step(
+        self,
+        correlation_id: str,
+        skill_name: str,
+        step_id: str,
+        type: str,
+        status: str,
+        tool: Optional[str] = None,
+        instruction: Optional[str] = None,
+        result: Optional[dict] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Record per-step execution. instruction is truncated to 200 chars."""
+        data: dict = {
+            "correlation_id": correlation_id,
+            "skill_name": skill_name,
+            "step_id": step_id,
+            "type": type,
+            "status": status,
+        }
+        if tool is not None:
+            data["tool"] = tool
+        if instruction is not None:
+            data["instruction"] = self._truncate(instruction, 200)
+        if result is not None:
+            data["result"] = result
+        if error is not None:
+            data["error"] = error
+        self._write("workflow_step", data)
+
+    def log_workflow_result(
+        self,
+        correlation_id: str,
+        skill_name: str,
+        success: bool,
+        need_approval: bool,
+        need_more_info: bool,
+        step_count: int,
+    ) -> None:
+        """Record Skill execution final result."""
+        self._write("workflow_result", {
+            "correlation_id": correlation_id,
+            "skill_name": skill_name,
+            "success": success,
+            "need_approval": need_approval,
+            "need_more_info": need_more_info,
+            "step_count": step_count,
+        })
+
+    def log_skill_failed(
+        self,
+        correlation_id: str,
+        skill_name: str,
+        error_code: str,
+        error_detail: str,
+        failed_step_id: Optional[str] = None,
+    ) -> None:
+        """Record Skill execution failure. error_detail truncated to 200 chars."""
+        data: dict = {
+            "correlation_id": correlation_id,
+            "skill_name": skill_name,
+            "error_code": error_code,
+            "error_detail": self._truncate(error_detail, 200),
+        }
+        if failed_step_id is not None:
+            data["failed_step_id"] = failed_step_id
+        self._write("skill_failed", data)
+
+    def log_skill_fragment_applied(
+        self,
+        fragment_preview: str,
+        fragment_length: int,
+    ) -> None:
+        """Record that Skill fragments were injected into the system prompt (audit trail)."""
+        self._write("skill_fragment_applied", {
+            "fragment_preview": self._truncate(fragment_preview, 200),
+            "fragment_length": fragment_length,
+        })
+
     def log_error(self, error_type: str, message: str):
         self._write("error", {
             "error_type": error_type,

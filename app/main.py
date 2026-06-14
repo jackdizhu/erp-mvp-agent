@@ -5,21 +5,28 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import queue
+import re
 import threading
 import uuid
 import logging
 import requests
+from pathlib import Path
 
-from app.agent import chat, confirm_action, stream_chat, format_sse_event
+import yaml
+
+from app.agent import chat, confirm_action, stream_chat, format_sse_event, _current_on_event
 from app.agent_logger import SessionLogger
-from app.clients.client_factory import register_erp_adapter
+from app.clients.client_factory import register_erp_adapter, client_factory
 from app.clients.mcp_registry import reload_registry, init_registry
-from app.config import CLIENT_BACKEND, ENABLE_LOCAL_ADAPTER, MCP_SERVICE_URL
+from app.config import CLIENT_BACKEND, ENABLE_LOCAL_ADAPTER, MCP_SERVICE_URL, ENABLE_SKILL
 from app.models import (
     ApprovalCreateRequest, ApprovalCreateResponse,
     ApprovalDecideRequest, ApprovalDecideResponse
 )
 from app.approval_store import approval_store
+from app.skills.registry import get_skill_registry, init_skill_registry
+from app.skills.validator import SkillValidator
+from app.skills.loader import SkillConfig
 from erp_app.main import router as erp_router
 from erp_app.db import init_db as init_erp_db
 from erp_app.seed import seed_data
@@ -42,11 +49,14 @@ app.include_router(erp_router)
 
 @app.get("/health")
 async def health_check():
+    registry = get_skill_registry()
     return {
         "status": "healthy",
         "service": "erp-agent-backend",
         "client_backend": CLIENT_BACKEND,
-        "enable_local_adapter": ENABLE_LOCAL_ADAPTER
+        "enable_local_adapter": ENABLE_LOCAL_ADAPTER,
+        "enable_skill": ENABLE_SKILL,
+        "skill_count": len(registry.get_all_skills()) if registry else 0,
     }
 
 
@@ -84,6 +94,14 @@ def on_startup():
         init_registry()
     if ENABLE_LOCAL_ADAPTER:
         register_erp_adapter()
+    # Initialize Skill framework (after client_factory is ready)
+    try:
+        init_skill_registry()
+        registry = get_skill_registry()
+        count = len(registry.get_all_skills()) if registry else 0
+        logger.info(f"Skill registry initialized with {count} skills")
+    except Exception as e:
+        logger.error(f"Failed to initialize skill registry: {e}")
 
 
 class HistoryMessage(BaseModel):
@@ -148,6 +166,8 @@ async def chat_endpoint(req: ChatRequest):
 
     logger = SessionLogger(session_id)
 
+    # For /chat (sync), no SSE stream; pass None on_event. Skill observability
+    # still writes log entries via logger.
     result = chat(req.message, history, logger)
     return ChatResponse(**result)
 
@@ -178,12 +198,17 @@ async def stream_endpoint(req: ChatRequest):
 
     def run_sync():
         try:
-            stream_chat(req.message, history, on_event, logger)
+            # Inject on_event into agent context (decision D1: contextvars)
+            token = _current_on_event.set(on_event)
+            try:
+                stream_chat(req.message, history, on_event, logger)
+            finally:
+                _current_on_event.reset(token)
         except Exception as e:
             error_data = {"message": str(e), "code": "stream_error"}
-            logger.error(
-                f"Stream error for session {session_id}: {type(e).__name__}: {str(e)}",
-                exc_info=True
+            logger.log_error(
+                "stream_error",
+                f"Stream error for session {session_id}: {type(e).__name__}: {str(e)}"
             )
             q.put(format_sse_event("done", {
                 "complete": False,
@@ -281,6 +306,161 @@ async def approval_decide(req: ApprovalDecideRequest):
         approved=req.approved,
         status="approved" if req.approved else "rejected"
     )
+
+
+def _safe_get_all_tool_names() -> list:
+    """Get available tool names from client_factory, gracefully degrading if MCP is down.
+
+    The MCP client raises HTTPError when its service is unreachable. We catch
+    and return whatever tools are currently registered (may be empty if all
+    backends failed at startup).
+    """
+    try:
+        return [t["function"]["name"] for t in client_factory.get_all_tools()]
+    except Exception as e:
+        logger.warning(f"Failed to enumerate tools from client_factory: {e}")
+        # Fall back to erp_local tool names from TOOL_SCHEMAS
+        try:
+            from erp_app.tools import TOOL_SCHEMAS
+            return [t.get("name", "") for t in TOOL_SCHEMAS if t.get("name")]
+        except Exception:
+            return []
+
+
+# --- Skill management API endpoints (spec: skill-api) ---
+
+class SkillLoadRequest(BaseModel):
+    skill_name: str
+
+
+class SkillValidateRequest(BaseModel):
+    skill_name: str
+    skill_data: dict
+
+
+class SkillCreateRequest(BaseModel):
+    name: str
+    description: str
+    intent_patterns: dict
+    prompt_fragment: str = ""
+    tools: list = []
+    workflow: Optional[dict] = None
+
+
+@app.get("/api/skills/available")
+async def skills_available():
+    """List all registered skills (preset + custom)."""
+    registry = get_skill_registry()
+    if not registry:
+        return []
+    return [
+        {
+            "name": name,
+            "description": config.description,
+            "category": config.category,
+            "tools": config.tools,
+            "has_workflow": config.workflow is not None,
+            "has_handler": config.has_handler(),
+        }
+        for name, config in registry.get_all_skills().items()
+    ]
+
+
+@app.get("/api/skills/loaded")
+async def skills_loaded():
+    """List currently loaded skills. Phase 1/2: same as available."""
+    registry = get_skill_registry()
+    if not registry:
+        return []
+    return [
+        {"name": name, "description": config.description, "category": config.category}
+        for name, config in registry.get_all_skills().items()
+    ]
+
+
+@app.post("/api/skills/load")
+async def skill_load(req: SkillLoadRequest):
+    """Load a skill on demand (reserved for future session-scoped skills)."""
+    registry = get_skill_registry()
+    if not registry:
+        raise HTTPException(status_code=500, detail="Skill registry not initialized")
+    skill = registry.get_skill(req.skill_name)
+    if not skill:
+        raise HTTPException(status_code=404, detail=f"Skill '{req.skill_name}' not found")
+    return {
+        "success": True,
+        "name": skill.name,
+        "tools": skill.tools,
+        "has_workflow": skill.workflow is not None,
+        "has_handler": skill.has_handler(),
+    }
+
+
+@app.post("/api/skills/validate")
+async def skill_validate(req: SkillValidateRequest):
+    """Validate a custom skill configuration."""
+    validator = SkillValidator()
+    # client_factory.get_all_tools() returns OpenAI-format dicts; name field is
+    # already the short form (alias mapping strips mcp_ prefix at registration).
+    available_tools = _safe_get_all_tool_names()
+    is_valid, errors = validator.validate_config(
+        req.skill_data, available_tools, is_custom=True
+    )
+    return {"valid": is_valid, "errors": errors}
+
+
+@app.post("/api/skills/create")
+async def skill_create(req: SkillCreateRequest):
+    """Create a custom skill. Writes skill.yaml to skills_custom/ and hot-loads."""
+    # 1. Name format check
+    if not re.match(r'^[a-zA-Z0-9_-]+$', req.name):
+        raise HTTPException(
+            status_code=400,
+            detail="Skill 名称只允许字母、数字、下划线和连字符",
+        )
+
+    registry = get_skill_registry()
+
+    # 2. Name collision check
+    if registry and registry.get_skill(req.name):
+        raise HTTPException(
+            status_code=400, detail=f"Skill '{req.name}' 已存在"
+        )
+
+    # 3. Build config + validate
+    config_data = {
+        "name": req.name,
+        "version": "1.0",
+        "description": req.description,
+        "category": "custom",
+        "intent_patterns": req.intent_patterns,
+        "tools": req.tools,
+        "prompt_fragment": req.prompt_fragment,
+        "workflow": req.workflow,
+    }
+    validator = SkillValidator()
+    available_tools = _safe_get_all_tool_names()
+    is_valid, errors = validator.validate_config(
+        config_data, available_tools, is_custom=True
+    )
+    if not is_valid:
+        raise HTTPException(
+            status_code=400, detail="; ".join(errors)
+        )
+
+    # 4. Write to disk (skills_custom/ flat — decision D4)
+    skill_dir = Path(__file__).resolve().parents[1].parent / "skills_custom" / req.name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    with open(skill_dir / "skill.yaml", "w", encoding="utf-8") as f:
+        yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False)
+
+    # 5. Hot-load into registry
+    if registry:
+        config = SkillConfig(name=req.name, config_path=skill_dir)
+        if config.load():
+            registry.add_skill(config)
+
+    return {"success": True, "name": req.name}
 
 
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "9000"))

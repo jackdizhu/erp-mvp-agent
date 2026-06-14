@@ -33,3 +33,8 @@ CLIENT_BACKEND = os.getenv("CLIENT_BACKEND", "hybrid")
 ENABLE_LOCAL_ADAPTER = os.getenv("ENABLE_LOCAL_ADAPTER", "true").lower() in ("true", "1", "yes")
 
 MCP_SERVICE_URL = os.getenv("MCP_SERVICE_URL", "")
+
+# Skill framework (decision D4)
+# Phase 1: default False (backward compatible)
+# Phase 2: default True (skill matching active)
+ENABLE_SKILL = os.getenv("ENABLE_SKILL", "false").lower() in ("true", "1", "yes")

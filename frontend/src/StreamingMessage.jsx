@@ -1,5 +1,7 @@
 import ThinkingIndicator from './ThinkingIndicator';
 import ApprovalCard from './ApprovalCard';
+import SkillCard from './SkillCard';
+import SkillInfoBanner from './SkillInfoBanner';
 
 export default function StreamingMessage({ message, messageIndex, activeSession, updateSessions, setLoading, onConfirm }) {
   const isUser = message.role === "user";
@@ -11,6 +13,16 @@ export default function StreamingMessage({ message, messageIndex, activeSession,
   const pendingActions = message.pendingActions || [];
   const approvalStates = message.approvalStates || [];
   const completedTools = message.completedTools || [];
+  // Skill observability fields (add-skill-observability)
+  const skillMatched = message.skillMatched;
+  const workflowSteps = message.workflowSteps || [];
+  const skillFailed = message.skillFailed;
+  const correlationId = message.correlationId;
+  const failedStepId = skillFailed?.failed_step_id;
+
+  // Banner mutual exclusion: failure > need_more_info > info
+  const showFailureBanner = !!skillFailed;
+  const showInfoBanner = !showFailureBanner && !!skillMatched;
 
   return (
     <div className={`message ${isUser ? "user" : "assistant"}`}>
@@ -24,6 +36,14 @@ export default function StreamingMessage({ message, messageIndex, activeSession,
             <ThinkingIndicator
               stage={thinkingState.stage}
               message={thinkingState.message}
+            />
+          )}
+
+          {showInfoBanner && (
+            <SkillInfoBanner
+              skill_name={skillMatched.name}
+              category={skillMatched.category}
+              tools={skillMatched.tools || []}
             />
           )}
 
@@ -42,7 +62,7 @@ export default function StreamingMessage({ message, messageIndex, activeSession,
             <div className="reply-text">{replyContent}</div>
           )}
 
-          {!thinkingState && toolEvents.length === 0 && !replyContent && (
+          {!thinkingState && toolEvents.length === 0 && !replyContent && !showInfoBanner && (
             <ThinkingIndicator message="正在处理..." />
           )}
         </div>
@@ -50,12 +70,39 @@ export default function StreamingMessage({ message, messageIndex, activeSession,
 
       {!isUser && !isStreaming && (
         <>
-          {message.errorMessage && (
+          {skillFailed && (
             <div className="error-message-banner">
               <span className="error-icon">⚠️</span>
-              <span className="error-text">{message.errorMessage}</span>
+              <span className="error-text">
+                技能 {skillFailed.name} 执行失败：
+                {(skillFailed.error_detail || '').slice(0, 100)}
+                {(skillFailed.error_detail || '').length > 100 ? '...' : ''}
+                （错误码：{skillFailed.error_code}）
+                {skillFailed.error_code === 'SKILL_EXECUTION_FAILED' && '（可重试或换种方式描述）'}
+              </span>
             </div>
           )}
+
+          {showInfoBanner && (
+            <SkillInfoBanner
+              skill_name={skillMatched.name}
+              category={skillMatched.category}
+              tools={skillMatched.tools || []}
+            />
+          )}
+
+          {skillMatched && (
+            <SkillCard
+              skill_name={skillMatched.name}
+              category={skillMatched.category}
+              description={skillMatched.description}
+              tools={skillMatched.tools || []}
+              workflow_steps={workflowSteps}
+              correlation_id={correlationId}
+              failed_step_id={failedStepId}
+            />
+          )}
+
           {completedTools.length > 0 && (
             <div className="tool-call-sequence">
               {completedTools.map((tc, i) => (

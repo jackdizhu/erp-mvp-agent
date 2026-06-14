@@ -18,7 +18,9 @@ from app.errors import (
 from app.prompt_config import build_system_prompt
 from erp_app.tools_format import get_openai_tools
 
-SYSTEM_PROMPT = build_system_prompt()
+# SYSTEM_PROMPT module-level constant removed (decision D2).
+# build_system_prompt is now called per request from app/agent.py:build_messages
+# to support dynamic skill_fragments injection.
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

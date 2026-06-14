@@ -1,7 +1,7 @@
 # ERP Agent MVP 项目架构文档
 
 > 基于 LLM Tool Calling 的 ERP 操作型 Agent 系统
-> 生成日期: 2026-06-07
+> 生成日期: 2026-06-14（更新 Skill 框架章节）
 
 ---
 
@@ -26,6 +26,7 @@
 │  main.py · agent.py · approval_core.py              │
 │  intent_detector · llm · prompt_config              │
 │  agent_logger · errors · config                     │
+│  skills/ (Skill 运行时 — base/loader/registry/executor/validator)│
 ├──────────────────────┬──────────────────────────────┤
 │         ClientFactory (工具路由层)                    │
 │  ┌─────────────┐  ┌──────────────┐                  │
@@ -69,8 +70,15 @@ erp-mvp-agent/
 │   │   ├── intent_rules.json     # 意图检测规则
 │   │   ├── mcp_servers.json      # MCP 服务配置
 │   │   └── prompts.yaml          # 系统提示词
-│   ├── agent.py                  # Agent 核心循环 + 流式处理
-│   ├── agent_logger.py           # 会话日志记录器
+│   ├── agent.py                  # Agent 核心循环 + 流式处理 + Skill 匹配
+│   ├── agent_logger.py           # 会话日志记录器（含 skill_matched 等）
+│   ├── skills/                   # Skill 框架运行时
+│   │   ├── base.py               # SkillHandler 基类 + WorkflowResult
+│   │   ├── loader.py             # SkillConfig 加载器（扫描 skill.yaml）
+│   │   ├── registry.py           # SkillRegistry 匹配引擎（正则编译）
+│   │   ├── executor.py           # SkillExecutor 执行器（handler/YAML）
+│   │   ├── validator.py          # SkillValidator 配置校验
+│   │   └── observability.py      # SkillObservability 可观测性封装
 │   ├── approval_core.py          # 审批流程管理器
 │   ├── config.py                 # 全局配置
 │   ├── erp_client.py             # ERP 客户端封装
@@ -171,12 +179,112 @@ Agent 核心是整个系统的中枢，负责 LLM 交互、工具调用、风险
 | 事件 | 数据 | 说明 |
 |------|------|------|
 | `thinking` | `{stage, message}` | 思考状态 |
+| `skill_matched` | `{name, category, correlation_id, ...}` | Skill 匹配成功 |
+| `workflow_step` | `{step_id, type, status, tool, ...}` | Workflow 步骤完成 |
+| `workflow_result` | `{success, need_approval, need_more_info}` | Workflow 执行结果 |
+| `skill_failed` | `{error_code, error_detail, correlation_id}` | Skill 执行失败 |
 | `tool_call` | `{tool, args, status}` | 工具调用开始 |
 | `tool_result` | `{tool, result, status}` | 工具执行结果 |
 | `reply_chunk` | `{content}` | 回复文本片段 |
 | `done` | `{complete, tool_calls, pending_action}` | 流结束 |
 
-### 3.2 审批核心（app/approval_core.py）
+### 3.2 Skill 框架（app/skills/）
+
+Skill 框架提供意图匹配、Prompt 注入、Workflow 执行和可观测性能力。
+
+**核心流程：**
+
+```
+用户消息 "查询订单123"
+       ↓
+  _resolve_skill_fragments(message)
+       ↓
+  SkillRegistry.match_skill(message)
+       ↓
+  re.search("查.*订单", "查询订单123") → 匹配成功
+       ↓
+  SkillObservability 创建 → correlation_id = "skill_exec_<12 hex>"
+       ↓
+  obs.skill_matched() → SSE + 日志事件
+       ↓
+  build_messages(skill_fragments) → prompt 注入到 system prompt
+       ↓
+  SkillExecutor.execute() → handler / YAML workflow
+       ↓
+  ┌─ workflow_result.success + need_approval → 审批流程
+  ├─ workflow_result.success + need_more_info → LLM 继续对话
+  ├─ workflow_result.success → 正常返回
+  └─ workflow_result 失败 → skill_failed 事件
+```
+
+**关键组件：**
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| SkillLoader | `loader.py` | 扫描 skills/ + skills_custom/，加载 skill.yaml |
+| SkillRegistry | `registry.py` | 编译正则表达式，执行意图匹配 |
+| SkillExecutor | `executor.py` | 执行 Python handler 或 YAML workflow |
+| SkillObservability | `observability.py` | 发送 SSE 事件 + 写入日志 |
+| SkillValidator | `validator.py` | 校验 skill.yaml 配置格式 |
+
+**Skill 配置示例：**
+
+```yaml
+# skills/query-order-search/skill.yaml
+name: query-order-search
+description: "查询订单信息：订单状态、收货地址、预计送达时间"
+category: preset
+
+intent_patterns:
+  zh:
+    - "查.*订单"
+    - "订单.*查询"
+  en:
+    - "check.*order"
+
+tools:
+  - query_order
+
+prompt_fragment: |
+  查询订单时，请展示以下信息：
+  - 订单状态（status）
+  - 收货地址（address）
+  - 预计送达时间（estimated_delivery）
+
+workflow: null  # 仅 prompt 注入，LLM 直接调用工具
+```
+
+**匹配规则：**
+
+- 中文模式：大小写敏感（如 `"查.*订单"` 匹配 "查询订单123"）
+- 英文模式：大小写不敏感（如 `"check.*order"` 匹配 "Check order 123"）
+- **优先级：**第一个匹配的 skill 胜出（按注册顺序）
+
+**可观测性事件：**
+
+| 事件类型 | SSE payload | 日志字段 |
+|---------|-------------|---------|
+| `skill_matched` | `{name, category, correlation_id}` | `skill_name, prompt_fragment` |
+| `workflow_step` | `{step_id, type, status, tool}` | `instruction, elapsed_ms` |
+| `workflow_result` | `{success, need_approval}` | `need_more_info` |
+| `skill_failed` | `{error_code, error_detail}` | `correlation_id` |
+
+**correlation_id 格式：**
+
+```
+skill_exec_<12 hex chars>  # 48 位熵，如 skill_exec_0a899ed1b5ef
+```
+
+**功能开关：**
+
+```python
+# config.py
+ENABLE_SKILL = os.getenv("ENABLE_SKILL", "false").lower() in ("true", "1", "yes")
+```
+
+默认关闭，需在 `.default.env` 中设置 `ENABLE_SKILL=true` 启用。
+
+### 3.3 审批核心（app/approval_core.py）
 
 管理高风险操作的审批生命周期。
 
@@ -197,7 +305,7 @@ PENDING ──→ 用户确认 ──→ approved=True ──→ 执行工具
 | `APPROVAL_TTL` | 300秒 | 审批超时时间 |
 | `APPROVAL_MAX_PENDING` | 10 | 最大待审批数 |
 
-### 3.3 客户端工厂（app/clients/client_factory.py）
+### 3.4 客户端工厂（app/clients/client_factory.py）
 
 工具路由的核心调度器，统一管理本地适配器和 MCP 客户端。
 
@@ -215,7 +323,7 @@ PENDING ──→ 用户确认 ──→ approved=True ──→ 执行工具
 └─ 未找到 + 本地适配器禁用 → TOOL_NOT_FOUND 错误
 ```
 
-### 3.4 MCP 客户端（app/clients/mcp_client.py）
+### 3.5 MCP 客户端（app/clients/mcp_client.py）
 
 实现 MCP（Model Context Protocol）协议客户端，通过 JSON-RPC 2.0 与远程 MCP 服务通信。
 
@@ -238,7 +346,7 @@ PENDING ──→ 用户确认 ──→ approved=True ──→ 执行工具
 | `MCP_TOOL_NOT_FOUND` | 工具不存在 |
 | `MCP_AUTH_FAILED` | 认证失败 (401) |
 
-### 3.5 MCP 注册中心（app/clients/mcp_registry.py）
+### 3.6 MCP 注册中心（app/clients/mcp_registry.py）
 
 管理多个 MCP 服务的注册、发现和热重载。
 
@@ -248,7 +356,7 @@ PENDING ──→ 用户确认 ──→ approved=True ──→ 执行工具
 - 运行时热重载（`/api/mcp/reload`）
 - 线程安全的客户端管理
 
-### 3.6 MCP 服务（erp_mcp_service/）
+### 3.7 MCP 服务（erp_mcp_service/）
 
 独立的 MCP 协议服务端，提供标准 JSON-RPC 2.0 接口。
 
@@ -283,7 +391,7 @@ PENDING ──→ 用户确认 ──→ approved=True ──→ 执行工具
 | `sse` | Server-Sent Events 流式返回 |
 | `auto`（默认） | 根据 Accept 头自动选择 |
 
-### 3.7 意图检测（app/intent_detector.py）
+### 3.8 意图检测（app/intent_detector.py）
 
 防止 LLM 幻觉绕过工具调用的安全机制。
 
@@ -301,7 +409,7 @@ detect_tool_intent() 检测用户消息
 
 **规则配置：** 从 `config_dir/intent_rules.json` 加载，支持环境变量覆盖路径。
 
-### 3.8 本地 ERP（erp_app/）
+### 3.9 本地 ERP（erp_app/）
 
 基于 SQLite 的轻量 ERP 数据层，提供订单、库存、供应商管理。
 
@@ -501,6 +609,7 @@ MCP 服务支持 API Key 认证（`MCP_API_KEY` 环境变量），通过 `X-API-
 | `BACKEND_PORT` | `9000` | 后端端口 |
 | `CLIENT_BACKEND` | `hybrid` | 客户端后端模式 |
 | `ENABLE_LOCAL_ADAPTER` | `true` | 启用本地适配器 |
+| `ENABLE_SKILL` | `false` | 启用 Skill 框架（需手动设置为 true） |
 | `MCP_SERVICE_URL` | - | MCP 服务地址 |
 | `APPROVAL_TTL` | `300` | 审批超时(秒) |
 | `APPROVAL_MAX_PENDING` | `10` | 最大待审批数 |

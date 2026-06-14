@@ -29,7 +29,7 @@ def build_capabilities_list(tools: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_system_prompt() -> str:
+def build_system_prompt(skill_fragments: str = "") -> str:
     prompts = _get_prompts()
 
     from erp_app.tools import TOOL_SCHEMAS
@@ -53,6 +53,12 @@ def build_system_prompt() -> str:
     parts.append("")
     parts.append(risk_notice)
     parts.append(response_style)
+
+    # Skill injection (decision D2)
+    if skill_fragments:
+        parts.append("")
+        parts.append("=== 技能指引 ===")
+        parts.append(skill_fragments)
 
     return "\n".join(parts)
 

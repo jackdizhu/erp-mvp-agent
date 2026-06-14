@@ -11,12 +11,25 @@
 ```
 用户（自然语言）
    ↓
+Skill 匹配（app.skills.registry）— 可选，ENABLE_SKILL=true 时启用
+   ↓
 Agent（意图识别 + 工具选择 + 强制重试）
    ↓
 ClientFactory（MCP / 本地适配器 / 混合路由）
    ↓
 ERP 服务（SQLite 持久化 + Service 层）
 ```
+
+## Skill 框架
+
+系统支持 Skill 机制（[设计文档](docs/design-skill-plan-c.md)）：
+- **preset skill**（`skills/{name}/`）：含 `skill.yaml` + 可选 `handler.py`
+- **custom skill**（`skills_custom/{name}/`）：仅 `skill.yaml`，YAML 工作流，无代码
+
+管理 API：
+- `GET /api/skills/available` — 列出所有 skill
+- `POST /api/skills/validate` — 校验配置
+- `POST /api/skills/create` — 创建 custom skill（自动写盘 + 热加载）
 
 ## 核心优势
 

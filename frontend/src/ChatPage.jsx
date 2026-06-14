@@ -195,6 +195,12 @@ export default function ChatPage() {
       pendingActions: [],
       approvalStates: [],
       completedTools: [],
+      // Skill observability fields (design D10, all optional for non-Skill paths)
+      skillMatched: null,
+      workflowSteps: [],
+      skillFailed: null,
+      skillNeedMoreInfo: null,
+      correlationId: null,
       timestamp: new Date().toISOString(),
     };
 
@@ -232,6 +238,80 @@ export default function ChatPage() {
 
     await startStream(userMsg, truncateHistory(activeSession.messages), activeId, {
       onThinking: () => {},
+      onSkillMatched: (data) => {
+        updateSessions(prev => {
+          const idx = prev.findIndex(s => s.id === activeId);
+          if (idx === -1) return prev;
+          const session = { ...prev[idx] };
+          const msgs = [...session.messages];
+          const msg = { ...msgs[msgs.length - 1] };
+          msg.skillMatched = {
+            name: data.name,
+            category: data.category,
+            description: data.description,
+            tools: data.tools,
+            has_workflow: data.has_workflow,
+            has_handler: data.has_handler,
+          };
+          msg.correlationId = data.correlation_id;
+          msgs[msgs.length - 1] = msg;
+          session.messages = msgs;
+          prev[idx] = session;
+          return [...prev];
+        });
+      },
+      onWorkflowStep: (data) => {
+        updateSessions(prev => {
+          const idx = prev.findIndex(s => s.id === activeId);
+          if (idx === -1) return prev;
+          const session = { ...prev[idx] };
+          const msgs = [...session.messages];
+          const msg = { ...msgs[msgs.length - 1] };
+          const steps = [...(msg.workflowSteps || [])];
+          // In-place update if step_id already present, else append
+          const existingIdx = steps.findIndex(s => s.step_id === data.step_id);
+          if (existingIdx >= 0) {
+            steps[existingIdx] = { ...steps[existingIdx], ...data };
+          } else {
+            steps.push({
+              step_id: data.step_id,
+              type: data.type,
+              tool: data.tool,
+              instruction: data.instruction,
+              status: data.status,
+              elapsed_ms: data.elapsed_ms,
+              result_summary: data.result_summary,
+            });
+          }
+          msg.workflowSteps = steps;
+          msgs[msgs.length - 1] = msg;
+          session.messages = msgs;
+          prev[idx] = session;
+          return [...prev];
+        });
+      },
+      onSkillFailed: (data) => {
+        updateSessions(prev => {
+          const idx = prev.findIndex(s => s.id === activeId);
+          if (idx === -1) return prev;
+          const session = { ...prev[idx] };
+          const msgs = [...session.messages];
+          const msg = { ...msgs[msgs.length - 1] };
+          msg.skillFailed = {
+            name: data.name,
+            error_code: data.error_code,
+            error_detail: data.error_detail,
+            failed_step_id: data.failed_step_id,
+          };
+          if (data.correlation_id) {
+            msg.correlationId = data.correlation_id;
+          }
+          msgs[msgs.length - 1] = msg;
+          session.messages = msgs;
+          prev[idx] = session;
+          return [...prev];
+        });
+      },
       onToolCall: (data) => {
         if (!toolCallOrder.includes(data.tool)) {
           toolCallOrder.push(data.tool);

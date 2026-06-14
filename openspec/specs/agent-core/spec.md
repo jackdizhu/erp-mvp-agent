@@ -56,3 +56,71 @@ The system SHALL obtain tool schemas via `erp_client.get_tools()` instead of imp
 #### Scenario: System prompt includes tool context
 - **WHEN** agent constructs messages for LLM
 - **THEN** system prompt includes role definition and all tool schemas are passed via the tools parameter
+
+### Requirement: Skill matching priority
+The agent loop SHALL call `SkillRegistry.match_skill(message)` before `intent_detector.detect_tool_intent()`. When a skill is matched, the agent enters the Skill execution path and SHALL NOT call `detect_tool_intent()` or `_force_tool_retry()`. When no skill is matched, the agent falls back to the existing `detect_tool_intent()` flow.
+
+#### Scenario: Skill matched takes priority
+- **WHEN** user sends "查一下订单 ORD-001 状态" and the query-order-search skill's intent pattern matches
+- **THEN** agent enters Skill path (injects prompt_fragment, runs executor)
+- **AND** detect_tool_intent is NOT called
+
+#### Scenario: No skill matched falls back
+- **WHEN** user sends a message that matches no skill's intent patterns
+- **THEN** agent calls detect_tool_intent and proceeds with the existing tool-call flow
+
+#### Scenario: Skill matched but execution fails
+- **WHEN** skill is matched and SkillExecutor returns WorkflowResult(success=False)
+- **THEN** agent returns SKILL_EXECUTION_FAILED error
+- **AND** does NOT fall back to detect_tool_intent (no forced tool retry)
+
+### Requirement: Skill execution routing
+When a skill is matched, the agent SHALL route execution based on the executor result: (1) `success=True` with no flags → return results to user, (2) `need_approval=True` → call `_handle_skill_approval` bridge, (3) `need_more_info=True` → inject `intermediate_data` into system prompt and re-call LLM without tools.
+
+#### Scenario: Skill success returns results
+- **WHEN** SkillExecutor returns WorkflowResult(success=True, steps=[...], intermediate_data={...})
+- **THEN** agent returns the workflow's intermediate_data as the tool_calls and runs LLM for final reply
+
+#### Scenario: Skill need_approval routes to bridge
+- **WHEN** SkillExecutor returns WorkflowResult(need_approval=True, intermediate_data={tool, tool_args, approval_summary})
+- **THEN** agent calls `_handle_skill_approval(workflow_result, messages, logger)` which uses approval_core.create_pending
+
+#### Scenario: Skill need_more_info injects context
+- **WHEN** SkillExecutor returns WorkflowResult(need_more_info=True, intermediate_data={...})
+- **THEN** agent appends system message describing skill state, then calls LLM without tools parameter
+- **AND** returns LLM reply as user-facing response
+
+### Requirement: Skill path SSE event emission
+The agent loop SHALL emit `skill_matched` / `workflow_step` / `workflow_result` / `skill_failed` SSE events at defined points in the Skill execution path, in addition to the existing `tool_call` / `tool_result` / `reply_chunk` / `done` events.
+
+#### Scenario: Skill matched event before executor
+- **WHEN** a user message matches a Skill and the agent enters the Skill execution path
+- **THEN** agent emits `event: skill_matched` with payload `{name, category, description, tools, has_workflow, has_handler, correlation_id}` BEFORE calling `SkillExecutor.execute()`
+
+#### Scenario: Workflow step event per step
+- **WHEN** YAML workflow step completes (tool_call or prompt)
+- **THEN** agent emits `event: workflow_step` with payload `{correlation_id, step_id, type, tool?, instruction?, status, elapsed_ms?, result_summary?}`
+
+#### Scenario: Workflow result on success
+- **WHEN** SkillExecutor returns success=True (any combination of need_approval / need_more_info / normal)
+- **THEN** agent emits `event: workflow_result` with payload `{correlation_id, success: true, need_approval, need_more_info, step_count}`
+
+#### Scenario: Skill failed on failure
+- **WHEN** SkillExecutor returns success=False or raises an exception
+- **THEN** agent emits `event: skill_failed` with payload `{correlation_id, name, error_code: "SKILL_EXECUTION_FAILED", error_detail, failed_step_id?}` (no workflow_result event in this case)
+
+### Requirement: SkillObservability integration
+The agent loop SHALL create a `SkillObservability` instance per Skill execution to encapsulate the correlation_id, SSE emission, and log writing.
+
+#### Scenario: Observability instance lifecycle
+- **WHEN** a skill is matched
+- **THEN** agent creates `obs = SkillObservability(logger=session_logger, on_event=emit_sse)` and passes `obs` to all subsequent emit calls
+- **AND** `obs.correlation_id` is a single UUID used for all events/logs of this execution
+
+#### Scenario: Observable in chat() function
+- **WHEN** chat() handles a Skill-matched message
+- **THEN** the function creates the observability instance inline and uses it across all 4 branch handlers (need_approval, need_more_info, success, failure)
+
+#### Scenario: Observable in stream_chat() function
+- **WHEN** stream_chat() handles a Skill-matched message (Phase 3)
+- **THEN** same observability pattern applies; `on_event` callback is the existing SSE event emitter

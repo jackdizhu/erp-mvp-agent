@@ -63,7 +63,10 @@ export async function chatStream(sessionId, message, history, signal) {
 }
 
 export async function chatStreamReader(sessionId, message, history, callbacks) {
-  const { onThinking, onToolCall, onToolResult, onReplyChunk, onDone, onError } = callbacks;
+  const {
+    onThinking, onToolCall, onToolResult, onReplyChunk, onDone, onError,
+    onSkillMatched, onWorkflowStep, onSkillFailed,
+  } = callbacks;
 
   let res;
   try {
@@ -122,6 +125,10 @@ export async function chatStreamReader(sessionId, message, history, callbacks) {
             case "tool_call": onToolCall?.(data); break;
             case "tool_result": onToolResult?.(data); break;
             case "reply_chunk": onReplyChunk?.(data); break;
+            // Skill observability events (Phase 1 add-skill-observability)
+            case "skill_matched": onSkillMatched?.(data); break;
+            case "workflow_step": onWorkflowStep?.(data); break;
+            case "skill_failed": onSkillFailed?.(data); break;
             case "done": onDone?.(data); break;
           }
         } catch (e) {

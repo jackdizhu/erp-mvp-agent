@@ -1,0 +1,42 @@
+name: query-order-edit-address
+version: "1.0"
+description: "修改订单收货地址：先查询当前地址确认，再执行修改"
+category: preset
+
+intent_patterns:
+  zh:
+    - "改.*收货地址"
+    - "修改.*地址"
+    - "更新.*收货"
+    - "换.*地址"
+    - "订单.*地址.*改"
+  en:
+    - "change.*address"
+    - "update.*address"
+    - "modify.*delivery"
+    - "edit.*shipping"
+
+tools:
+  - query_order
+  - update_order
+
+prompt_fragment: |
+  修改收货地址流程：
+  1. 先查询订单当前收货地址，展示给用户确认
+  2. 用户确认后，执行修改操作
+  3. 修改完成后，再次查询展示新地址
+
+# Python handler (preset skill only)
+workflow:
+  handler: "handler.OrderEditAddressHandler"
+  steps:
+    - id: query_current
+      tool: query_order
+      description: "查询当前订单信息"
+    - id: confirm_and_update
+      tool: update_order
+      description: "确认后修改地址"
+      requires_approval: true
+    - id: verify_result
+      tool: query_order
+      description: "验证修改结果"

@@ -1,0 +1,33 @@
+name: query-order-search
+version: "1.0"
+description: "查询订单信息：订单状态、收货地址、预计送达时间"
+category: preset
+
+intent_patterns:
+  zh:
+    - "查.*订单"
+    - "订单.*查询"
+    - "订单.*状态"
+    - "订单.*地址"
+    - "订单.*送达"
+    - "看看.*订单"
+    - "查一下.*订单"
+  en:
+    - "check.*order"
+    - "query.*order"
+    - "order.*status"
+    - "order.*address"
+    - "order.*delivery"
+
+tools:
+  - query_order
+
+prompt_fragment: |
+  查询订单时，请展示以下信息：
+  - 订单状态（status）
+  - 收货地址（address）
+  - 预计送达时间（estimated_delivery）
+  如果某个字段为空，请说明"暂无数据"。
+
+# No workflow — LLM calls query_order directly
+workflow: null

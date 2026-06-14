@@ -255,6 +255,23 @@ def mcp_auth_failed(detail: str = "") -> AgentError:
     )
 
 
+def skill_execution_failed(skill_name: str, error_detail: str) -> AgentError:
+    """Skill execution failure (decision D5/D6).
+
+    Returned when a matched skill's executor returns WorkflowResult(success=False)
+    or raises an exception. The agent does NOT fall back to detect_tool_intent
+    on this error.
+    """
+    truncated = error_detail[:200] + "..." if len(error_detail) > 200 else error_detail
+    return AgentError(
+        code="SKILL_EXECUTION_FAILED",
+        message=f"技能 {skill_name} 执行失败：{truncated}",
+        detail=truncated,
+        source="skill",
+        recoverable=True
+    )
+
+
 def build_error_response(error: AgentError, reply: str = "") -> dict:
     if not reply:
         reply = error.message
